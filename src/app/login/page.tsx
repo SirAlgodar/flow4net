@@ -34,6 +34,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
+        credentials: 'include', // Ensure cookies are handled
       });
 
       const result = await res.json();

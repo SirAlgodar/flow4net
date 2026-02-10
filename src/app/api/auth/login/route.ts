@@ -97,12 +97,24 @@ export async function POST(request: Request) {
 
     // Set Cookie
     const maxAge = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 8; // 30 days or 8 hours
+    
+    const useSecure = process.env.NODE_ENV === 'production' && process.env.USE_HTTPS === 'true';
+    console.log(`[Login] Setting cookie. Secure: ${useSecure}, Env: ${process.env.NODE_ENV}, UseHTTPS: ${process.env.USE_HTTPS}`);
 
     response.cookies.set('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' && process.env.USE_HTTPS === 'true', // Only secure if explicitly enabled for HTTPS
-        sameSite: 'lax', // Relaxed slightly to prevent issues with some browser redirects
+        secure: useSecure, 
+        sameSite: 'lax',
         maxAge: maxAge, 
+        path: '/'
+    });
+
+    // Debug cookie (visible to JS)
+    response.cookies.set('login_debug', 'success', {
+        httpOnly: false,
+        secure: useSecure,
+        sameSite: 'lax',
+        maxAge: 60, // 1 minute
         path: '/'
     });
 
