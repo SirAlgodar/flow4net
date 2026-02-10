@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///Users/gabrieldesouza/Documents/trae_projects/flow4network/src/app/api/links/%5Bcode%5D/route.ts"],"sourcesContent":["import { NextResponse } from 'next/server';\nimport { PrismaClient } from '@prisma/client';\n\nconst prisma = new PrismaClient();\n\nexport async function GET(request: Request, { params }: { params: Promise<{ code: string }> }) {\n  const { code } = await params;\n  const link = await prisma.testLink.findUnique({\n    where: { code },\n  });\n  \n  if (!link) {\n    return NextResponse.json({ error: 'Link not found' }, { status: 404 });\n  }\n  \n  if (link.expiresAt && new Date() > link.expiresAt) {\n    return NextResponse.json({ error: 'Link expired' }, { status: 410 });\n  }\n\n  return NextResponse.json(link);\n}\n"],"names":[],"mappings":";;;;AAAA;AACA;;;AAEA,MAAM,SAAS,IAAI,oPAAY;AAExB,eAAe,IAAI,OAAgB,EAAE,EAAE,MAAM,EAAyC;IAC3F,MAAM,EAAE,IAAI,EAAE,GAAG,MAAM;IACvB,MAAM,OAAO,MAAM,OAAO,QAAQ,CAAC,UAAU,CAAC;QAC5C,OAAO;YAAE;QAAK;IAChB;IAEA,IAAI,CAAC,MAAM;QACT,OAAO,8LAAY,CAAC,IAAI,CAAC;YAAE,OAAO;QAAiB,GAAG;YAAE,QAAQ;QAAI;IACtE;IAEA,IAAI,KAAK,SAAS,IAAI,IAAI,SAAS,KAAK,SAAS,EAAE;QACjD,OAAO,8LAAY,CAAC,IAAI,CAAC;YAAE,OAAO;QAAe,GAAG;YAAE,QAAQ;QAAI;IACpE;IAEA,OAAO,8LAAY,CAAC,IAAI,CAAC;AAC3B"}}]
-}

@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 40, "column": 0}, "map": {"version":3,"sources":["file:///Users/gabrieldesouza/Documents/trae_projects/flow4network/src/app/api/speedtest/upload/route.ts"],"sourcesContent":["export async function POST(request: Request) {\n    await request.blob();\n    return new Response('ok');\n}\n"],"names":[],"mappings":";;;;AAAO,eAAe,KAAK,OAAgB;IACvC,MAAM,QAAQ,IAAI;IAClB,OAAO,IAAI,SAAS;AACxB"}}]
-}
