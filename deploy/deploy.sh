@@ -83,6 +83,12 @@ if [ $? -ne 0 ]; then
     rollback
 fi
 
+# Carregar variáveis de ambiente explicitamente para garantir que o Prisma as veja
+if [ -f .env ]; then
+    log "Carregando variáveis de ambiente do .env..."
+    export $(grep -v '^#' .env | xargs)
+fi
+
 # 4. Migração do Banco de Dados
 log "Executando migrações do banco de dados..."
 npx prisma migrate deploy
