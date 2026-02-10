@@ -37,8 +37,8 @@ interface TestResult {
   os: string | null;
   browser: string | null;
   browserVersion: string | null;
-  downloadSpeed: number | null;
-  uploadSpeed: number | null;
+  downloadAvg: number | null;
+  uploadAvg: number | null;
   ping: number | null;
   packetLoss: number | null;
   jitter: number | null;
@@ -169,8 +169,8 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
         
         const rows = data.results.map(r => [
             format(new Date(r.createdAt), 'dd/MM/yyyy HH:mm:ss'),
-            r.downloadSpeed || 0,
-            r.uploadSpeed || 0,
+            r.downloadAvg || 0,
+            r.uploadAvg || 0,
             r.ping || 0,
             r.jitter || 0,
             r.packetLoss || 0,
@@ -296,8 +296,8 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
                                     labelFormatter={(val) => format(new Date(val), 'dd/MM/yyyy HH:mm')}
                                     formatter={(val: any) => [`${Number(val).toFixed(2)} Mbps`, 'Velocidade']}
                                 />
-                                <Line type="monotone" dataKey="downloadSpeed" stroke="#2563eb" strokeWidth={2} name="Download" dot={false} />
-                                <Line type="monotone" dataKey="uploadSpeed" stroke="#16a34a" strokeWidth={2} name="Upload" dot={false} />
+                                <Line type="monotone" dataKey="downloadAvg" stroke="#2563eb" strokeWidth={2} name="Download" dot={false} />
+                                <Line type="monotone" dataKey="uploadAvg" stroke="#16a34a" strokeWidth={2} name="Upload" dot={false} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -349,10 +349,10 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 font-medium text-blue-600">
-                                                {res.downloadSpeed?.toFixed(1) || '-'} <span className="text-xs text-gray-400">Mbps</span>
+                                                {res.downloadAvg?.toFixed(1) || '-'} <span className="text-xs text-gray-400">Mbps</span>
                                             </td>
                                             <td className="px-6 py-4 font-medium text-green-600">
-                                                {res.uploadSpeed?.toFixed(1) || '-'} <span className="text-xs text-gray-400">Mbps</span>
+                                                {res.uploadAvg?.toFixed(1) || '-'} <span className="text-xs text-gray-400">Mbps</span>
                                             </td>
                                             <td className="px-6 py-4">
                                                 {res.ping?.toFixed(0) || '-'} <span className="text-xs text-gray-400">ms</span>

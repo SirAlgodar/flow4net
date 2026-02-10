@@ -51,8 +51,8 @@ export default async function AdminPage() {
                             <span className="text-sm text-muted-foreground">{res.createdAt.toLocaleString()}</span>
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                            <div>Download: {res.downloadSpeed?.toFixed(2)} Mbps</div>
-                            <div>Upload: {res.uploadSpeed?.toFixed(2)} Mbps</div>
+                            <div>Download: {res.downloadAvg?.toFixed(2)} Mbps</div>
+                            <div>Upload: {res.uploadAvg?.toFixed(2)} Mbps</div>
                             <div>Ping: {res.ping?.toFixed(0)} ms</div>
                             <div>IP: {res.publicIp}</div>
                         </div>
