@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TestResultSchema, type TestResultFormData } from '@/lib/schemas/test-result';
+import { TestResultSchema, type TestResultFormData, type TestResultFormInput } from '@/lib/schemas/test-result';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Save, AlertCircle, Loader2 } from 'lucide-react';
@@ -12,7 +12,7 @@ export function ManualDataCollectionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const form = useForm<TestResultFormData>({
+  const form = useForm<TestResultFormInput, any, TestResultFormData>({
     resolver: zodResolver(TestResultSchema),
     defaultValues: {
       isIpv6: false,

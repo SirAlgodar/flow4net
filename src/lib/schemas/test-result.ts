@@ -69,3 +69,4 @@ export const TestResultSchema = z.object({
 });
 
 export type TestResultFormData = z.infer<typeof TestResultSchema>;
+export type TestResultFormInput = z.input<typeof TestResultSchema>;
