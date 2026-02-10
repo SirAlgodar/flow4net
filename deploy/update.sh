@@ -1,7 +1,7 @@
 #!/bin/bash
 
-LOG_FILE="/var/www/flow4network/logs/deploy.log"
-DEPLOY_SCRIPT="/var/www/flow4network/deploy/deploy.sh"
+LOG_FILE="/opt/flow4network/logs/deploy.log"
+DEPLOY_SCRIPT="/opt/flow4network/deploy/deploy.sh"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 

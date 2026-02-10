@@ -36,7 +36,7 @@ Este documento detalha o procedimento para realizar o deploy da aplicação Flow
 
 1.  **Clone o Repositório:**
     ```bash
-    cd /var/www
+    cd /opt
     sudo git clone https://github.com/SirAlgodar/flow4net.git flow4network
     sudo chown -R $USER:$USER flow4network
     cd flow4network
@@ -126,12 +126,13 @@ Para manter a aplicação atualizada automaticamente com a branch `main`:
     ```
     Adicione a linha para verificar atualizações diariamente às 04:00 AM:
     ```
-    0 4 * * * /var/www/flow4network/deploy/update.sh
+    0 4 * * * /opt/flow4network/deploy/update.sh
     ```
 
 ## ✅ 5. Checklist de Verificação Pós-Deploy
 
 Após o deploy, execute os seguintes testes para garantir a integridade:
+
 
 - [ ] **Acesso Web**: O site carrega em `http://seu-dominio.com` (ou HTTPS)?
 - [ ] **API**: A rota `/api/diagnostics/ping` retorna 200 OK?
@@ -151,4 +152,4 @@ Após o deploy, execute os seguintes testes para garantir a integridade:
 
 - **Erro 502 Bad Gateway**: O Node.js não está rodando. Verifique `pm2 status` e `pm2 logs`.
 - **Erro de Conexão DB**: Verifique `DATABASE_URL` no `.env` e se o MariaDB está rodando (`systemctl status mariadb`).
-- **Permissões**: Certifique-se que o usuário do deploy tem permissão de escrita em `/var/www/flow4network`.
+- **Permissões**: Certifique-se que o usuário do deploy tem permissão de escrita em `/opt/flow4network`.

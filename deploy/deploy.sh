@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Configurações
-APP_DIR="/var/www/flow4network" # Ajuste conforme necessário
-BACKUP_DIR="/var/www/backups"
+APP_DIR="/opt/flow4network" # Ajuste conforme necessário
+BACKUP_DIR="/opt/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BRANCH="main" # ou "master" dependendo do repositório
 PM2_APP_NAME="flow4network"
