@@ -93,35 +93,50 @@ model TestResult {
   deviceType      String?
   os              String?
   browser         String?
+  browserVersion  String?
   userAgent       String? @db.Text
-  ram             Int?
+  ram             String?
   cpuCores        Int?
   gpu             String?
-  
+
   // Network Info
   publicIp        String?
   localIp         String?
-  ipv6            String?
   provider        String?
   connectionType  String?
-  
-  // Speed Metrics
-  downloadSpeed   Float? 
-  uploadSpeed     Float? 
-  ping            Float? 
-  jitter          Float? 
-  packetLoss      Float? 
-  
-  // Quality Metrics
-  pageLoadTime    Float? 
-  dnsTime         Float? 
-  
-  // Streaming Capabilities
-  canStream4k     Boolean @default(false)
-  canStreamHd     Boolean @default(false)
+  isIpv6          Boolean?
+
+  // MTU/MSS
+  mtu             Int?
+  mss             Int?
+
+  // Speed Test
+  downloadAvg     Float?
+  downloadMax     Float?
+  uploadAvg       Float?
+  uploadMax       Float?
+  ping            Float?
+  jitter          Float?
+  jitterStatus    String?
+
+  // Streaming
+  sdStatus        String?
+  hdStatus        String?
+  ultraHdStatus   String?
+  liveStatus      String?
+  status4k        String?
+
+  // Quality
+  qualitySpeed    Float?
+  qualityLatency  Float?
+  packetLoss      Float?
+  signalStatus    String?
+
+  // Metrics
+  pageLoadMetrics Json?
   
   // External Services (JSON)
-  externalStatus  Json? 
+  externalStatus  Json?
 
   @@index([testLinkId])
   @@index([createdAt])
