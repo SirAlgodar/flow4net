@@ -93,6 +93,10 @@ fi
 log "Executando migrações do banco de dados..."
 npx prisma migrate deploy
 
+# 5. Seeding (Garantir usuário admin)
+log "Executando seed do banco de dados..."
+npx prisma db seed
+
 if [ $? -ne 0 ]; then
     error "Falha na migração do banco de dados."
     rollback
