@@ -77,10 +77,18 @@ export default function NewLinkPage() {
   };
 
   const copyToClipboard = () => {
-    if (createdLink) {
-      navigator.clipboard.writeText(createdLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    if (createdLink && navigator?.clipboard) {
+      navigator.clipboard.writeText(createdLink)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(err => {
+          console.error('Failed to copy:', err);
+          // Fallback manual copy logic if needed, or just alert user
+        });
+    } else {
+        console.warn('Clipboard API not available');
     }
   };
 

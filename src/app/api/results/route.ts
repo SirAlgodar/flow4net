@@ -8,8 +8,13 @@ export async function POST(request: Request) {
     const body = await request.json();
     
     // Support both flat structure (from manual form) and nested (from legacy runner if any)
+    const rawLinkId = body.linkId || body.testLinkId;
+    if (!rawLinkId) {
+        throw new Error('testLinkId is missing');
+    }
+
     const data = {
-        testLinkId: body.linkId || body.testLinkId,
+        testLinkId: rawLinkId,
         cpfCnpj: body.cpfCnpj || body.identificador,
         
         // Device
