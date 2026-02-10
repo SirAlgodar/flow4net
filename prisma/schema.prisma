@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  ATTENDANT
+}
+
+enum LinkType {
+  QUICK
+  IDENTIFIED
+  UNIDENTIFIED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(ATTENDANT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdTests TestLink[] @relation("CreatedLinks")
+  
+  parentId  String? 
+  parent    User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children  User[]   @relation("UserHierarchy")
+
+  // Auth fields
+  username            String?   @unique
+  mustChangePassword  Boolean   @default(false)
+  failedLoginAttempts Int       @default(0)
+  lockoutUntil        DateTime?
+
+  auditLogs AuditLog[]
+
+  @@index([parentId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // LOGIN_SUCCESS, LOGIN_FAILED, etc.
+  status    String   // SUCCESS, FAILURE
+  ip        String?
+  userAgent String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model TestLink {
+  id          String    @id @default(uuid())
+  code        String    @unique 
+  type        LinkType  @default(QUICK)
+  creatorId   String?
+  creator     User?     @relation("CreatedLinks", fields: [creatorId], references: [id])
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  
+  cpfCnpj     String?
+  
+  config      Json? 
+
+  results     TestResult[]
+
+  @@index([creatorId])
+  @@index([code])
+}
+
+model TestResult {
+  id              String   @id @default(uuid())
+  testLinkId      String?
+  testLink        TestLink? @relation(fields: [testLinkId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  
+  cpfCnpj         String?
+  
+  // Device Info
+  deviceType      String?
+  os              String?
+  browser         String?
+  userAgent       String? @db.Text
+  ram             Int?
+  cpuCores        Int?
+  gpu             String?
+  
+  // Network Info
+  publicIp        String?
+  localIp         String?
+  ipv6            String?
+  provider        String?
+  connectionType  String?
+  
+  // Speed Metrics
+  downloadSpeed   Float? 
+  uploadSpeed     Float? 
+  ping            Float? 
+  jitter          Float? 
+  packetLoss      Float? 
+  
+  // Quality Metrics
+  pageLoadTime    Float? 
+  dnsTime         Float? 
+  
+  // Streaming Capabilities
+  canStream4k     Boolean @default(false)
+  canStreamHd     Boolean @default(false)
+  
+  // External Services (JSON)
+  externalStatus  Json? 
+
+  @@index([testLinkId])
+  @@index([createdAt])
+  @@index([cpfCnpj])
+}

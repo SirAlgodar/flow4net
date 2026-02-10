@@ -1,0 +1,3 @@
+{
+  "/api/diagnostics/external-check/route": "app/api/diagnostics/external-check/route.js"
+}

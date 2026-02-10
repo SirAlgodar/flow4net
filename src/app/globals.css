@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  /* Dark Theme Palette (Default) */
+  --background: #0F172A; /* Slate 900 */
+  --foreground: #E5E7EB; /* Gray 200 */
+  
+  --card: #1E293B; /* Slate 800 (adjusted for better contrast than 900) */
+  --card-foreground: #E5E7EB;
+
+  --primary: #3B82F6; /* Blue 500 */
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #6366F1; /* Indigo 500 */
+  --secondary-foreground: #FFFFFF;
+  
+  --muted: #334155; /* Slate 700 */
+  --muted-foreground: #9CA3AF; /* Gray 400 */
+
+  --accent: #1E293B; /* Slate 800 */
+  --accent-foreground: #E5E7EB;
+
+  --destructive: #EF4444; /* Red 500 */
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #22C55E; /* Green 500 */
+  --warning: #FACC15; /* Yellow 400 */
+
+  --border: #334155; /* Slate 700 */
+  --input: #334155;
+  --ring: #3B82F6;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@theme {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+}

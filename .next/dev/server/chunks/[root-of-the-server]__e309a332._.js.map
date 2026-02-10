@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///Users/gabrieldesouza/Documents/trae_projects/flow4network/src/app/api/ip/route.ts"],"sourcesContent":["import { NextResponse } from 'next/server';\n\nexport async function GET(request: Request) {\n  const forwarded = request.headers.get('x-forwarded-for');\n  const ip = forwarded ? forwarded.split(',')[0] : '127.0.0.1';\n  return NextResponse.json({ ip });\n}\n"],"names":[],"mappings":";;;;AAAA;;AAEO,eAAe,IAAI,OAAgB;IACxC,MAAM,YAAY,QAAQ,OAAO,CAAC,GAAG,CAAC;IACtC,MAAM,KAAK,YAAY,UAAU,KAAK,CAAC,IAAI,CAAC,EAAE,GAAG;IACjD,OAAO,8LAAY,CAAC,IAAI,CAAC;QAAE;IAAG;AAChC"}}]
+}

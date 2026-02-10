@@ -1,0 +1,39 @@
+openapi: 3.0.0
+info:
+  title: Flow4Network API
+  version: 1.0.0
+paths:
+  /api/results:
+    post:
+      summary: Submit test results
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkId:
+                  type: string
+                cpfCnpj:
+                  type: string
+                device:
+                  type: object
+                network:
+                  type: object
+                speed:
+                  type: object
+      responses:
+        200:
+          description: OK
+  /api/links/{code}:
+    get:
+      summary: Get link details
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Link details
