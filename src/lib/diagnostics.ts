@@ -439,8 +439,8 @@ export class DiagnosticsEngine {
 
   private analyzeQuality(down: number, up: number, ping: number, jitter: number, loss: number) {
       let score = 100;
-      const issues = [];
-      const recommendations = [];
+      const issues: string[] = [];
+      const recommendations: string[] = [];
 
       if (down < 10) { score -= 20; issues.push("Download baixo"); }
       if (up < 5) { score -= 10; issues.push("Upload baixo"); }
