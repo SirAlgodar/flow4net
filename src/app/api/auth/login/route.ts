@@ -100,8 +100,8 @@ export async function POST(request: Request) {
 
     response.cookies.set('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production' && process.env.USE_HTTPS === 'true', // Only secure if explicitly enabled for HTTPS
+        sameSite: 'lax', // Relaxed slightly to prevent issues with some browser redirects
         maxAge: maxAge, 
         path: '/'
     });
