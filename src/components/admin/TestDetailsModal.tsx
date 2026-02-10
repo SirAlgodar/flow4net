@@ -36,6 +36,7 @@ interface TestResult {
   deviceType: string | null;
   os: string | null;
   browser: string | null;
+  browserVersion: string | null;
   downloadSpeed: number | null;
   uploadSpeed: number | null;
   ping: number | null;
@@ -51,6 +52,19 @@ interface TestResult {
   downlink?: number | null;
   signalStrength?: number | null;
   frequency?: number | null;
+  // Hardware info
+  ram?: string | null;
+  cpuCores?: number | null;
+  gpu?: string | null;
+  // Advanced Network
+  mtu?: number | null;
+  mss?: number | null;
+  localIp?: string | null;
+  isIpv6?: boolean | null;
+  // Identification
+  cpfCnpj?: string | null;
+  // Other
+  ultraHdStatus?: boolean | null;
 }
 
 interface TestDetails {
@@ -131,8 +145,28 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
         link.click();
         document.body.removeChild(link);
     } else {
-        // Simple CSV export for results
-        const headers = ['Data', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Jitter (ms)', 'Perda (%)', 'Dispositivo', 'IP'];
+        // Extended CSV export for results
+        const headers = [
+            'Data', 
+            'Download (Mbps)', 
+            'Upload (Mbps)', 
+            'Ping (ms)', 
+            'Jitter (ms)', 
+            'Perda (%)', 
+            'Dispositivo', 
+            'Navegador',
+            'IP Publico',
+            'IP Local',
+            'MTU',
+            'MSS',
+            'IPv6',
+            'RAM',
+            'CPU',
+            'GPU',
+            'CPF/CNPJ',
+            'Ultra HD'
+        ];
+        
         const rows = data.results.map(r => [
             format(new Date(r.createdAt), 'dd/MM/yyyy HH:mm:ss'),
             r.downloadSpeed || 0,
@@ -141,12 +175,22 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
             r.jitter || 0,
             r.packetLoss || 0,
             `${r.deviceType || ''} - ${r.os || ''}`,
-            r.publicIp || ''
+            `${r.browser || ''} ${r.browserVersion || ''}`.trim(),
+            r.publicIp || '',
+            r.localIp || '',
+            r.mtu || '',
+            r.mss || '',
+            r.isIpv6 ? 'Sim' : 'Não',
+            r.ram || '',
+            r.cpuCores || '',
+            r.gpu || '',
+            r.cpfCnpj || '',
+            r.ultraHdStatus ? 'Sim' : 'Não'
         ]);
         
         const csvContent = "data:text/csv;charset=utf-8," 
             + headers.join(",") + "\n" 
-            + rows.map(e => e.join(",")).join("\n");
+            + rows.map(e => e.map(cell => `"${cell}"`).join(",")).join("\n");
             
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -378,6 +422,23 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
                                                                         </div>
                                                                     </>
                                                                 )}
+                                                                <div className="col-span-1 sm:col-span-2 mt-2 pt-2 border-t border-gray-100">
+                                                                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Avançado</p>
+                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                        <div>
+                                                                            <p className="text-gray-500">MTU / MSS</p>
+                                                                            <p className="font-medium">{res.mtu || '-'} / {res.mss || '-'}</p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-gray-500">IP Local</p>
+                                                                            <p className="font-medium">{res.localIp || '-'}</p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-gray-500">Protocolo</p>
+                                                                            <p className="font-medium">{res.isIpv6 ? 'IPv6' : 'IPv4'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                         
@@ -402,7 +463,52 @@ export function TestDetailsModal({ testId, onClose }: TestDetailsModalProps) {
                                                                     <p className="text-gray-500">Provedor</p>
                                                                     <p className="font-medium">{res.provider || '-'}</p>
                                                                 </div>
+                                                                <div>
+                                                                    <p className="text-gray-500">Suporte 4K</p>
+                                                                    <p className={`font-medium ${res.ultraHdStatus ? 'text-green-600' : 'text-gray-500'}`}>
+                                                                        {res.ultraHdStatus ? 'Sim' : 'Não'}
+                                                                    </p>
+                                                                </div>
                                                             </div>
+
+                                                            {/* Hardware Section */}
+                                                            <div className="pt-4 border-t border-gray-100">
+                                                                <h4 className="font-semibold text-gray-900 border-b pb-2 flex items-center gap-2 mb-3">
+                                                                    <Monitor size={18} /> Hardware e Sistema
+                                                                </h4>
+                                                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                    <div>
+                                                                        <p className="text-gray-500">CPU / Núcleos</p>
+                                                                        <p className="font-medium">{res.cpuCores ? `${res.cpuCores} Cores` : '-'}</p>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-gray-500">Memória RAM</p>
+                                                                        <p className="font-medium">{res.ram || '-'}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <p className="text-gray-500">GPU</p>
+                                                                        <p className="font-medium truncate" title={res.gpu || ''}>{res.gpu || '-'}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <p className="text-gray-500">Navegador</p>
+                                                                        <p className="font-medium">{res.browser} {res.browserVersion}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Identification Section */}
+                                                            {res.cpfCnpj && (
+                                                                <div className="pt-4 border-t border-gray-100">
+                                                                    <h4 className="font-semibold text-gray-900 border-b pb-2 flex items-center gap-2 mb-3">
+                                                                        <User size={18} /> Identificação
+                                                                    </h4>
+                                                                    <div>
+                                                                        <p className="text-gray-500">CPF / CNPJ</p>
+                                                                        <p className="font-medium">{res.cpfCnpj}</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
                                                             <div className="mt-4 p-3 bg-white rounded border border-gray-200">
                                                                 <p className="text-xs text-gray-500 mb-1">User Agent</p>
                                                                 <p className="text-xs font-mono break-all text-gray-700">{res.userAgent}</p>

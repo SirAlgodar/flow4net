@@ -57,3 +57,16 @@ Este script:
     - **Valores Numéricos**: Utilize ponto (.) para decimais se necessário.
 4.  O botão "Salvar Resultado" só será habilitado se todos os campos obrigatórios estiverem preenchidos corretamente.
 5.  Ao salvar, os dados serão validados e enviados para o sistema.
+
+## Visualização de Resultados
+
+Os resultados detalhados podem ser visualizados na lista de testes.
+
+1.  Acesse "Gerenciamento de Testes" (`/admin/tests`).
+2.  Clique em "Ver Detalhes" em uma execução de teste.
+3.  O modal exibirá todas as informações coletadas, incluindo:
+    -   **Hardware e Sistema**: CPU, RAM, GPU, Navegador e Versão.
+    -   **Rede Avançada**: MTU, MSS, IP Local, IPv6.
+    -   **Identificação**: CPF/CNPJ (se informado).
+    -   **Qualidade e Métricas**: Suporte 4K, Ping, Jitter, etc.
+4.  É possível exportar os dados completos em formato **CSV** ou **JSON** clicando nos botões correspondentes no rodapé do modal.

@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { DiagnosticsEngine, DiagnosticResult } from '@/lib/diagnostics';
-import { Loader2, CheckCircle, Wifi, Gauge, Smartphone, Globe, Play, AlertTriangle, XCircle, Monitor, Gamepad2, Video, Radio, Activity } from 'lucide-react';
+import { Loader2, CheckCircle, Wifi, Gauge, Smartphone, Globe, Play, AlertTriangle, XCircle, Monitor, Gamepad2, Video, Radio, Activity, ChevronDown, ChevronUp, Server } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -17,7 +18,7 @@ export function TestRunner({ code }: { code: string }) {
   // Test State
   const [hasStarted, setHasStarted] = useState(false);
   const [finished, setFinished] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0); // 0: Idle, 1: Device, 2: Network, 3: Speed, 4: Results
+  const [currentStep, setCurrentStep] = useState(0); 
   
   // Data State
   const [statusMsg, setStatusMsg] = useState('');
@@ -27,9 +28,9 @@ export function TestRunner({ code }: { code: string }) {
 
   const [retryCount, setRetryCount] = useState(0);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
-    // Check for cached offline results and try to sync
     const syncOfflineResults = async () => {
         const cached = localStorage.getItem('offline_results');
         if (cached) {
@@ -51,16 +52,12 @@ export function TestRunner({ code }: { code: string }) {
         }
     };
     
-    if (navigator.onLine) {
-        syncOfflineResults();
-    }
-    
+    if (navigator.onLine) syncOfflineResults();
     window.addEventListener('online', () => {
         setOfflineMode(false);
         syncOfflineResults();
     });
     window.addEventListener('offline', () => setOfflineMode(true));
-    
     return () => {
         window.removeEventListener('online', () => {});
         window.removeEventListener('offline', () => {});
@@ -92,40 +89,81 @@ export function TestRunner({ code }: { code: string }) {
     
     setHasStarted(true);
     setFinished(false);
-    setCurrentStep(1); // Device Info
+    setCurrentStep(1);
 
     const engine = new DiagnosticsEngine((s, p) => {
         setStatusMsg(s);
         setProgress(p);
-        
-        // Simple logic to map progress to steps for visual feedback
-        if (p < 20) setCurrentStep(1); // Device
-        else if (p < 40) setCurrentStep(2); // Network
-        else if (p < 85) setCurrentStep(3); // Speed
-        else setCurrentStep(4); // Quality/External
+        if (p < 20) setCurrentStep(1); 
+        else if (p < 40) setCurrentStep(2); 
+        else if (p < 85) setCurrentStep(3); 
+        else setCurrentStep(4); 
     });
 
     try {
         const res = await engine.run();
         setResult(res);
         setFinished(true);
-        setCurrentStep(5); // Done
+        setCurrentStep(5);
         
+        // Map DiagnosticResult to API Payload
         const payload = {
             linkId: linkData.id,
             cpfCnpj,
-            device: res.device,
-            network: res.network,
-            speed: res.speed,
-            streaming: res.streaming,
-            externalStatus: res.externalStatus,
-            // Pass quality analysis if available
-            quality: res.quality
+            
+            // Device
+            deviceType: "Mobile/Desktop", // Simplified
+            os: res.device.platform,
+            browser: res.device.browser,
+            browserVersion: res.device.version,
+            userAgent: res.device.userAgent,
+            ram: res.device.ram,
+            cpuCores: res.device.cores,
+            gpu: res.device.gpu,
+
+            // Network
+            publicIp: res.network.ip,
+            localIp: res.network.localIp,
+            provider: res.network.provider,
+            connectionType: res.network.connectionType,
+            ipv6: res.network.ipv6,
+            isIpv6: res.network.ipv6 !== "Não é IPv6",
+
+            // MTU
+            mtu: res.mtu.mtu,
+            mss: res.mtu.mss,
+
+            // Speed
+            downloadAvg: res.speed.downloadAvg,
+            downloadMax: res.speed.downloadMax,
+            uploadAvg: res.speed.uploadAvg,
+            uploadMax: res.speed.uploadMax,
+            ping: res.speed.ping,
+            jitter: res.speed.jitter,
+            jitterStatus: res.speed.jitterStatus,
+
+            // Streaming
+            sdStatus: res.streaming.sd ? "OK" : "Dificuldades",
+            hdStatus: res.streaming.hd ? "OK" : "Dificuldades",
+            ultraHdStatus: res.streaming.ultraHd ? "OK" : "Dificuldades",
+            liveStatus: res.streaming.live ? "OK" : "Dificuldades",
+            status4k: res.streaming.k4 ? "OK" : "Dificuldades",
+
+            // Bandwidth Quality
+            qualitySpeed: res.bandwidth.speed,
+            qualityLatency: res.bandwidth.latency,
+            packetLoss: res.bandwidth.packetLoss,
+            signalStatus: res.bandwidth.status,
+
+            // Complex Data
+            pageLoadMetrics: res.pageResponse, // API needs to handle array->json
+            externalStatus: res.downdetector // API needs to handle array->json
         };
 
         try {
             await fetch('/api/results', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
         } catch (postError) {
@@ -139,114 +177,173 @@ export function TestRunner({ code }: { code: string }) {
     } catch (e) {
         console.error(e);
         if (retryCount < 3) {
-            console.log(`Retrying test... (${retryCount + 1}/3)`);
             setRetryCount(prev => prev + 1);
-            setTimeout(runTest, 2000 * Math.pow(2, retryCount)); // Exponential backoff
+            setTimeout(runTest, 1000);
         } else {
-            setError('Erro ao executar teste após múltiplas tentativas. Verifique sua conexão.');
+            setError('Erro ao executar teste. Verifique sua conexão.');
             setHasStarted(false);
         }
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-background text-foreground"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
-  if (error) return <div className="flex h-screen items-center justify-center bg-background text-destructive font-semibold">{error}</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-slate-900 text-white"><Loader2 className="animate-spin h-10 w-10 text-blue-500" /></div>;
+  if (error) return <div className="flex h-screen items-center justify-center bg-slate-900 text-red-500 font-bold text-xl">{error}</div>;
 
   if (finished && result) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col items-center py-10 px-4">
-        <div className="bg-card border border-border rounded-lg shadow-lg p-8 max-w-2xl w-full">
-            <div className="flex flex-col items-center mb-6">
-                <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-                <h2 className="text-2xl font-bold">Teste Concluído!</h2>
-                <p className="text-muted-foreground">Seus resultados foram enviados com sucesso.</p>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center py-10 px-4">
+        <div className="w-full max-w-5xl space-y-6">
+            
+            {/* Header / Summary Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-8 text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+                <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-4" />
+                <h2 className="text-3xl font-bold mb-2 text-white">Teste Concluído!</h2>
+                <p className="text-slate-400">Resultados enviados com sucesso.</p>
                 {offlineMode && (
-                    <div className="mt-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded text-sm flex items-center gap-2">
-                        <AlertTriangle size={14} /> Resultados salvos offline. Serão enviados ao reconectar.
+                    <div className="mt-4 inline-flex items-center gap-2 bg-yellow-900/30 text-yellow-500 px-4 py-2 rounded-full text-sm border border-yellow-800">
+                        <AlertTriangle size={16} /> Modo Offline - Resultados salvos localmente
                     </div>
                 )}
             </div>
 
-            {/* Quality Alert Section */}
+            {/* Quality Score */}
             {result.quality && (
-                <div className={`mb-6 p-4 rounded-lg border ${
-                    result.quality.rating === 'Excelente' || result.quality.rating === 'Bom' 
-                        ? 'bg-green-50 border-green-200' 
-                        : result.quality.rating === 'Regular' 
-                            ? 'bg-yellow-50 border-yellow-200' 
-                            : 'bg-red-50 border-red-200'
-                }`}>
-                    <h3 className="font-semibold text-lg flex items-center gap-2 mb-2">
-                        <Activity size={20} /> Qualidade da Conexão: {result.quality.rating}
-                    </h3>
-                    
-                    {result.quality.issues.length > 0 && (
-                        <div className="mt-3">
-                            <p className="font-medium text-sm mb-1">Problemas Detectados:</p>
-                            <ul className="list-disc list-inside text-sm space-y-1">
-                                {result.quality.issues.map((issue, idx) => (
-                                    <li key={idx}>{issue}</li>
-                                ))}
-                            </ul>
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-4 bg-blue-500/10 rounded-full">
+                            <Activity className="h-8 w-8 text-blue-500" />
                         </div>
-                    )}
-                    
-                    {result.quality.recommendations.length > 0 && (
-                        <div className="mt-3">
-                            <p className="font-medium text-sm mb-1">Sugestões:</p>
-                            <ul className="list-disc list-inside text-sm space-y-1">
-                                {result.quality.recommendations.map((rec, idx) => (
-                                    <li key={idx}>{rec}</li>
-                                ))}
-                            </ul>
+                        <div>
+                            <h3 className="text-xl font-bold text-white">Qualidade da Conexão</h3>
+                            <p className={`text-2xl font-black ${
+                                result.quality.rating === 'Excelente' ? 'text-green-500' : 
+                                result.quality.rating === 'Bom' ? 'text-blue-500' :
+                                result.quality.rating === 'Regular' ? 'text-yellow-500' : 'text-red-500'
+                            }`}>{result.quality.rating}</p>
                         </div>
-                    )}
+                    </div>
+                    <div className="flex-1 w-full md:w-auto">
+                         {result.quality.issues.length > 0 ? (
+                            <div className="bg-red-950/20 border border-red-900/50 rounded p-3">
+                                <p className="text-red-400 text-sm font-semibold mb-1">Atenção Necessária:</p>
+                                <ul className="list-disc list-inside text-xs text-red-300">
+                                    {result.quality.issues.map((i, k) => <li key={k}>{i}</li>)}
+                                </ul>
+                            </div>
+                         ) : (
+                             <div className="text-green-500 text-sm flex items-center gap-2">
+                                 <CheckCircle size={16}/> Nenhum problema detectado
+                             </div>
+                         )}
+                    </div>
                 </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="p-4 bg-muted rounded">
-                    <p className="text-sm text-muted-foreground">Download</p>
-                    <p className="text-xl font-bold">{result.speed.download.toFixed(1)} Mbps</p>
-                </div>
-                <div className="p-4 bg-muted rounded">
-                    <p className="text-sm text-muted-foreground">Upload</p>
-                    <p className="text-xl font-bold">{result.speed.upload.toFixed(1)} Mbps</p>
-                </div>
-                <div className="p-4 bg-muted rounded">
-                    <p className="text-sm text-muted-foreground">Ping</p>
-                    <p className="text-xl font-bold">{result.speed.ping.toFixed(0)} ms</p>
-                </div>
-                <div className="p-4 bg-muted rounded">
-                    <p className="text-sm text-muted-foreground">Jitter</p>
-                    <p className="text-xl font-bold">{result.speed.jitter.toFixed(0)} ms</p>
-                </div>
+            {/* Main Metrics Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard label="Download" value={result.speed.downloadAvg.toFixed(1)} unit="Mbps" icon={<Gauge className="text-cyan-400"/>} sub={`Max: ${result.speed.downloadMax.toFixed(1)}`} />
+                <MetricCard label="Upload" value={result.speed.uploadAvg.toFixed(1)} unit="Mbps" icon={<Gauge className="text-purple-400"/>} sub={`Max: ${result.speed.uploadMax.toFixed(1)}`} />
+                <MetricCard label="Ping" value={result.speed.ping.toFixed(0)} unit="ms" icon={<Activity className="text-yellow-400"/>} sub={`Jitter: ${result.speed.jitter.toFixed(0)}ms`} />
+                <MetricCard label="Perda de Pacotes" value={result.bandwidth.packetLoss.toFixed(1)} unit="%" icon={<AlertTriangle className="text-red-400"/>} sub={result.bandwidth.status} />
             </div>
 
-            {/* Network Details */}
-            <div className="mb-6 border-t pt-4">
-                 <h4 className="font-semibold mb-3 flex items-center gap-2"><Wifi size={16}/> Detalhes da Rede</h4>
-                 <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                        <span className="text-muted-foreground">Tipo:</span> <span className="uppercase font-medium">{result.network.connectionType || 'N/A'}</span>
+            {/* Expandable Details */}
+            <button 
+                onClick={() => setShowDetails(!showDetails)}
+                className="w-full flex items-center justify-center gap-2 py-3 text-slate-400 hover:text-white transition-colors"
+            >
+                {showDetails ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                {showDetails ? "Ocultar Detalhes Técnicos" : "Ver Detalhes Técnicos Completos"}
+            </button>
+
+            {showDetails && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                    
+                    {/* Network & Device */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Wifi size={18}/> Rede</h4>
+                            <div className="space-y-2 text-sm">
+                                <DetailRow label="Provedor" value={result.network.provider} />
+                                <DetailRow label="IP Público" value={result.network.ip} />
+                                <DetailRow label="IPv6" value={result.network.ipv6} />
+                                <DetailRow label="Tipo" value={result.network.connectionType} />
+                                <DetailRow label="MTU / MSS" value={`${result.mtu.mtu} / ${result.mtu.mss}`} />
+                            </div>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Smartphone size={18}/> Dispositivo</h4>
+                            <div className="space-y-2 text-sm">
+                                <DetailRow label="Sistema" value={result.device.platform} />
+                                <DetailRow label="Navegador" value={`${result.device.browser} ${result.device.version}`} />
+                                <DetailRow label="Cores/RAM" value={`${result.device.cores} / ${result.device.ram}`} />
+                                <DetailRow label="GPU" value={result.device.gpu} />
+                            </div>
+                        </div>
                     </div>
-                    {result.network.connectionType === 'wifi' && (
-                        <>
-                             <div>
-                                <span className="text-muted-foreground">Frequência:</span> <span className="font-medium">{result.network.frequency || '2.4'} GHz</span>
-                             </div>
-                             <div>
-                                <span className="text-muted-foreground">Sinal:</span> <span className="font-medium">{result.network.signalStrength || 0}%</span>
-                             </div>
-                        </>
-                    )}
-                 </div>
-            </div>
 
-            <div className="flex justify-center">
+                    {/* Streaming Support */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                         <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Video size={18}/> Streaming & Multimídia</h4>
+                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                             <StatusBadge label="SD" active={result.streaming.sd} />
+                             <StatusBadge label="HD" active={result.streaming.hd} />
+                             <StatusBadge label="Ultra HD" active={result.streaming.ultraHd} />
+                             <StatusBadge label="Live" active={result.streaming.live} />
+                             <StatusBadge label="4K" active={result.streaming.k4} />
+                         </div>
+                    </div>
+
+                    {/* Page Response Times */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Globe size={18}/> Tempo de Resposta (Sites)</h4>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-slate-400 uppercase bg-slate-800/50">
+                                    <tr>
+                                        <th className="px-4 py-2">Site</th>
+                                        <th className="px-4 py-2">Min</th>
+                                        <th className="px-4 py-2">Méd</th>
+                                        <th className="px-4 py-2">Max</th>
+                                        <th className="px-4 py-2">Perda</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {result.pageResponse.map((site, i) => (
+                                        <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/30">
+                                            <td className="px-4 py-2 font-medium">{site.name}</td>
+                                            <td className="px-4 py-2">{Math.round(site.min)}ms</td>
+                                            <td className="px-4 py-2 text-blue-400">{Math.round(site.avg)}ms</td>
+                                            <td className="px-4 py-2">{Math.round(site.max)}ms</td>
+                                            <td className={`px-4 py-2 ${site.packetLoss > 0 ? 'text-red-400' : 'text-green-500'}`}>{site.packetLoss.toFixed(0)}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Downdetector Status */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Server size={18}/> Status de Serviços (Downdetector Simulado)</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {result.downdetector.map((s, i) => (
+                                <div key={i} className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
+                                    <span className="text-xs font-medium text-slate-300">{s.name}</span>
+                                    <span className={`h-2 w-2 rounded-full ${s.status === 'up' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}></span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                </div>
+            )}
+
+            <div className="flex justify-center mt-8">
                 <button 
                     onClick={() => window.location.reload()}
-                    className="bg-primary text-primary-foreground px-6 py-2 rounded hover:bg-primary/90"
+                    className="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-500 font-bold shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
                 >
                     Realizar Novo Teste
                 </button>
@@ -256,300 +353,112 @@ export function TestRunner({ code }: { code: string }) {
     );
   }
 
+  // Progress Screen
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-card py-4 px-6 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      <header className="border-b border-slate-800 bg-slate-900 py-4 px-6 flex items-center justify-between">
          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-primary text-primary-foreground rounded flex items-center justify-center font-bold">F4</div>
-            <span className="font-semibold text-lg">Flow4Network</span>
+            <div className="h-8 w-8 bg-blue-600 text-white rounded flex items-center justify-center font-bold shadow-lg shadow-blue-500/20">F4</div>
+            <span className="font-bold text-lg tracking-tight">Flow4Network</span>
          </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
-        <div className="w-full max-w-4xl">
-            
-            {/* Start Screen */}
-            {!hasStarted && !finished && (
-                <div className="bg-card border border-border rounded-xl p-8 md:p-12 text-center shadow-lg">
-                    <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <Wifi className="h-10 w-10" />
-                    </div>
-                    <h1 className="text-3xl md:text-4xl font-bold mb-4">Teste de Qualidade da Conexão</h1>
-                    <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto">
-                        Este teste analisa velocidade, latência e estabilidade da sua internet para identificar possíveis problemas de performance.
-                    </p>
-
-                    {linkData.type !== 'UNIDENTIFIED' && !linkData.cpfCnpj && (
-                        <div className="mb-8 max-w-xs mx-auto text-left">
-                            <label className="block text-sm font-medium text-muted-foreground mb-1">CPF ou CNPJ</label>
-                            <input 
-                                type="text" 
-                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                                value={cpfCnpj}
-                                onChange={e => setCpfCnpj(e.target.value)}
-                                placeholder="Digite seu CPF ou CNPJ"
-                            />
-                        </div>
-                    )}
-
-                    <button 
-                        onClick={runTest}
-                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground hover:bg-blue-600 px-8 py-4 rounded-lg text-xl font-bold transition-all transform hover:scale-105"
-                    >
-                        <Play className="h-6 w-6" /> Iniciar Teste
-                    </button>
+      <main className="flex-1 flex flex-col items-center justify-center p-4">
+        {!hasStarted ? (
+            <div className="text-center max-w-2xl">
+                 <div className="mb-8 inline-flex p-6 rounded-full bg-blue-500/10 text-blue-500 animate-pulse">
+                    <Wifi className="h-16 w-16" />
                 </div>
-            )}
+                <h1 className="text-4xl md:text-5xl font-extrabold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                    Diagnóstico Avançado de Rede
+                </h1>
+                <p className="text-slate-400 text-lg mb-10 leading-relaxed">
+                    Análise completa de velocidade, latência, rotas e qualidade de streaming em segundos.
+                </p>
 
-            {/* Progress Screen */}
-            {hasStarted && !finished && (
-                <div className="space-y-8">
-                    {/* Stepper */}
-                    <div className="flex justify-between items-center px-4 md:px-12">
-                        <StepItem step={1} current={currentStep} label="Dispositivo" icon={Smartphone} />
-                        <div className="h-1 flex-1 bg-muted mx-2 rounded overflow-hidden">
-                             <div className={cn("h-full bg-primary transition-all duration-500", currentStep > 1 ? "w-full" : "w-0")} />
-                        </div>
-                        <StepItem step={2} current={currentStep} label="Rede" icon={Globe} />
-                        <div className="h-1 flex-1 bg-muted mx-2 rounded overflow-hidden">
-                             <div className={cn("h-full bg-primary transition-all duration-500", currentStep > 2 ? "w-full" : "w-0")} />
-                        </div>
-                        <StepItem step={3} current={currentStep} label="Velocidade" icon={Gauge} />
-                        <div className="h-1 flex-1 bg-muted mx-2 rounded overflow-hidden">
-                             <div className={cn("h-full bg-primary transition-all duration-500", currentStep > 3 ? "w-full" : "w-0")} />
-                        </div>
-                        <StepItem step={4} current={currentStep} label="Qualidade" icon={CheckCircle} />
+                {linkData && linkData.type !== 'UNIDENTIFIED' && !linkData.cpfCnpj && (
+                    <div className="mb-8 max-w-sm mx-auto">
+                        <input 
+                            type="text" 
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder:text-slate-600"
+                            value={cpfCnpj}
+                            onChange={e => setCpfCnpj(e.target.value)}
+                            placeholder="Digite seu CPF ou CNPJ para iniciar"
+                        />
                     </div>
+                )}
 
-                    <div className="bg-card border border-border rounded-xl p-8 md:p-12 text-center shadow-lg relative overflow-hidden">
-                         <div className="absolute top-0 left-0 h-1 bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
-                         
-                         <div className="mb-6">
-                             <Loader2 className="h-16 w-16 text-primary animate-spin mx-auto" />
-                         </div>
-                         <h2 className="text-2xl font-bold mb-2">{statusMsg}</h2>
-                         <p className="text-muted-foreground">Aguarde enquanto analisamos sua conexão...</p>
-                         <div className="mt-4 text-2xl font-mono font-bold text-primary">{Math.round(progress)}%</div>
-                    </div>
+                <button 
+                    onClick={runTest}
+                    className="group relative inline-flex items-center gap-3 bg-blue-600 hover:bg-blue-500 px-8 py-4 rounded-full text-xl font-bold transition-all transform hover:scale-105 shadow-xl shadow-blue-500/20"
+                >
+                    <Play className="h-6 w-6 fill-current" /> Iniciar Diagnóstico
+                </button>
+            </div>
+        ) : (
+            <div className="w-full max-w-md text-center">
+                <div className="mb-8 relative h-48 w-48 mx-auto flex items-center justify-center">
+                     {/* Circular Progress */}
+                     <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
+                        <circle className="text-slate-800" strokeWidth="8" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" />
+                        <circle 
+                            className="text-blue-500 transition-all duration-500 ease-out" 
+                            strokeWidth="8" 
+                            strokeDasharray={`${2 * Math.PI * 40}`} 
+                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - progress / 100)}`}
+                            strokeLinecap="round" 
+                            stroke="currentColor" 
+                            fill="transparent" 
+                            r="40" cx="50" cy="50" 
+                        />
+                     </svg>
+                     <div className="absolute inset-0 flex items-center justify-center flex-col">
+                         <span className="text-4xl font-bold">{Math.round(progress)}%</span>
+                     </div>
                 </div>
-            )}
-
-            {/* Results Screen */}
-            {finished && result && (
-                <div className="space-y-6 animate-in fade-in duration-700 slide-in-from-bottom-4">
-                    {/* Status Header */}
-                    <div className="bg-card border border-border rounded-xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-lg">
-                        <div className={cn(
-                            "h-16 w-16 rounded-full flex items-center justify-center shrink-0",
-                            result.speed.download > 10 && result.speed.packetLoss < 1 ? "bg-success/20 text-success" : "bg-warning/20 text-warning"
-                        )}>
-                            {result.speed.download > 10 && result.speed.packetLoss < 1 ? <CheckCircle className="h-8 w-8" /> : <AlertTriangle className="h-8 w-8" />}
-                        </div>
-                        <div className="text-center md:text-left">
-                            <h2 className="text-2xl font-bold mb-1">
-                                {result.speed.download > 10 && result.speed.packetLoss < 1 ? "Conexão Estável" : "Conexão com Instabilidade"}
-                            </h2>
-                            <p className="text-muted-foreground">
-                                {result.speed.download > 10 && result.speed.packetLoss < 1 
-                                    ? "Sua conexão está ótima para streaming em 4K, jogos online e chamadas de vídeo."
-                                    : "Detectamos variações que podem afetar chamadas de vídeo e jogos online."}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Main Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <MetricCard 
-                            title="Download" 
-                            value={result.speed.download.toFixed(1)} 
-                            unit="Mbps" 
-                            icon={Gauge} 
-                            color="text-success"
-                        />
-                         <MetricCard 
-                            title="Upload" 
-                            value={result.speed.upload.toFixed(1)} 
-                            unit="Mbps" 
-                            icon={Gauge} 
-                            color="text-primary"
-                        />
-                         <MetricCard 
-                            title="Ping" 
-                            value={result.speed.ping.toFixed(0)} 
-                            unit="ms" 
-                            icon={Zap} 
-                            color="text-yellow-500"
-                        />
-                         <MetricCard 
-                            title="Jitter" 
-                            value={result.speed.jitter.toFixed(0)} 
-                            unit="ms" 
-                            icon={Zap} 
-                            color="text-muted-foreground"
-                        />
-                    </div>
-
-                    {/* Quality of Experience */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-card border border-border rounded-xl p-6">
-                            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-                                <Monitor className="h-5 w-5 text-primary" /> Experiência de Uso
-                            </h3>
-                            <div className="space-y-4">
-                                <QualityRow 
-                                    label="Streaming 4K / UHD" 
-                                    status={result.streaming.uhd} 
-                                    icon={Video}
-                                />
-                                <QualityRow 
-                                    label="Jogos Online" 
-                                    status={result.speed.ping < 50 && result.speed.jitter < 10} 
-                                    icon={Gamepad2}
-                                />
-                                <QualityRow 
-                                    label="Chamadas de Vídeo" 
-                                    status={result.speed.upload > 2 && result.speed.jitter < 30} 
-                                    icon={Radio}
-                                />
-                            </div>
-                        </div>
-
-                         <div className="bg-card border border-border rounded-xl p-6">
-                            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-                                <Globe className="h-5 w-5 text-primary" /> Serviços Externos
-                            </h3>
-                            <div className="space-y-3">
-                                {result.externalStatus && JSON.parse(result.externalStatus).map((s: any) => (
-                                    <div key={s.name} className="flex justify-between items-center p-2 rounded bg-background/50">
-                                        <span className="font-medium">{s.name}</span>
-                                        <div className="flex items-center gap-2">
-                                            {s.status === 'up' 
-                                                ? <span className="text-xs font-bold text-success bg-success/10 px-2 py-1 rounded">ONLINE</span>
-                                                : <span className="text-xs font-bold text-destructive bg-destructive/10 px-2 py-1 rounded">OFFLINE</span>
-                                            }
-                                            {s.status === 'up' && <span className="text-xs text-muted-foreground">{Math.round(s.latency)}ms</span>}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Technical Details Accordion (Simplified as a box for now) */}
-                    <div className="bg-card border border-border rounded-xl p-6">
-                        <details className="group">
-                            <summary className="flex cursor-pointer items-center justify-between font-medium text-muted-foreground hover:text-foreground">
-                                <span>Ver Detalhes Técnicos</span>
-                                <span className="transition group-open:rotate-180">
-                                    <svg fill="none" height="24" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
-                                </span>
-                            </summary>
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm pt-4 border-t border-border">
-                                <div>
-                                    <span className="block text-muted-foreground">IP Público</span>
-                                    <span className="font-mono">{result.network.ip}</span>
-                                </div>
-                                <div>
-                                    <span className="block text-muted-foreground">Sistema Operacional</span>
-                                    <span>{result.device.os} ({result.device.browser})</span>
-                                </div>
-                                <div>
-                                    <span className="block text-muted-foreground">Conexão</span>
-                                    <span>{result.network.connectionType || 'Desconhecido'}</span>
-                                </div>
-                                 <div>
-                                    <span className="block text-muted-foreground">User Agent</span>
-                                    <span className="break-all text-xs text-muted-foreground">{result.device.userAgent}</span>
-                                </div>
-                            </div>
-                        </details>
-                    </div>
-
-                    <div className="flex justify-center pt-4">
-                        <button onClick={() => window.location.reload()} className="text-primary hover:underline">
-                            Realizar novo teste
-                        </button>
-                    </div>
+                
+                <h3 className="text-2xl font-bold mb-2 animate-pulse">{statusMsg}</h3>
+                <div className="flex justify-center gap-2 mt-4 text-slate-500">
+                    <StepIndicator active={currentStep >= 1} />
+                    <StepIndicator active={currentStep >= 2} />
+                    <StepIndicator active={currentStep >= 3} />
+                    <StepIndicator active={currentStep >= 4} />
                 </div>
-            )}
-        </div>
+            </div>
+        )}
       </main>
     </div>
   );
 }
 
-// Subcomponents
+const StepIndicator = ({ active }: { active: boolean }) => (
+    <div className={`h-2 w-12 rounded-full transition-colors duration-300 ${active ? 'bg-blue-500' : 'bg-slate-800'}`} />
+);
 
-function StepItem({ step, current, label, icon: Icon }: { step: number, current: number, label: string, icon: any }) {
-    const isActive = current === step;
-    const isCompleted = current > step;
-    
-    return (
-        <div className="flex flex-col items-center gap-2">
-            <div className={cn(
-                "h-10 w-10 rounded-full flex items-center justify-center transition-all duration-300",
-                isActive ? "bg-primary text-primary-foreground scale-110 shadow-lg ring-4 ring-primary/20" : 
-                isCompleted ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"
-            )}>
-                {isCompleted ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-            </div>
-            <span className={cn(
-                "text-sm font-medium transition-colors",
-                isActive ? "text-primary" : isCompleted ? "text-success" : "text-muted-foreground"
-            )}>{label}</span>
+const MetricCard = ({ label, value, unit, icon, sub }: any) => (
+    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl hover:border-slate-700 transition-colors">
+        <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-400 text-sm font-medium">{label}</span>
+            {icon}
         </div>
-    )
-}
-
-function MetricCard({ title, value, unit, icon: Icon, color }: { title: string, value: string, unit: string, icon: any, color: string }) {
-    return (
-        <div className="bg-card border border-border rounded-xl p-4 flex flex-col justify-between shadow-sm">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-muted-foreground text-sm font-medium">{title}</span>
-                <Icon className={cn("h-4 w-4", color)} />
-            </div>
-            <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold">{value}</span>
-                <span className="text-xs text-muted-foreground">{unit}</span>
-            </div>
+        <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold text-white">{value}</span>
+            <span className="text-sm text-slate-500">{unit}</span>
         </div>
-    )
-}
+        {sub && <div className="mt-2 text-xs text-slate-500">{sub}</div>}
+    </div>
+);
 
-function QualityRow({ label, status, icon: Icon }: { label: string, status: boolean, icon: any }) {
-    return (
-        <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-background/50">
-            <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-full", status ? "bg-success/10 text-success" : "bg-warning/10 text-warning")}>
-                    <Icon className="h-4 w-4" />
-                </div>
-                <span className="font-medium">{label}</span>
-            </div>
-            {status ? (
-                <span className="text-xs font-bold text-success bg-success/10 px-2 py-1 rounded-full">Excelente</span>
-            ) : (
-                <span className="text-xs font-bold text-warning bg-warning/10 px-2 py-1 rounded-full">Instável</span>
-            )}
-        </div>
-    )
-}
+const DetailRow = ({ label, value }: any) => (
+    <div className="flex justify-between py-1 border-b border-slate-800 last:border-0">
+        <span className="text-slate-400">{label}</span>
+        <span className="font-medium text-white truncate max-w-[200px]">{value || '-'}</span>
+    </div>
+);
 
-function Zap(props: any) {
-    return (
-         <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-    )
-}
+const StatusBadge = ({ label, active }: any) => (
+    <div className={`flex flex-col items-center justify-center p-3 rounded-lg border ${active ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-slate-900 border-slate-800 text-slate-600'}`}>
+        <span className="font-bold text-lg">{label}</span>
+        <span className="text-[10px] uppercase mt-1">{active ? 'OK' : 'N/A'}</span>
+    </div>
+);
