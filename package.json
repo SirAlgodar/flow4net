@@ -9,9 +9,6 @@
     "lint": "next lint",
     "prisma:seed": "prisma db seed"
   },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -44,6 +41,7 @@
     "prisma": "^6.19.2",
     "tailwindcss": "^4.1.18",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "description": ""
