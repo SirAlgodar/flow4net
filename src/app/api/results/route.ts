@@ -7,63 +7,67 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // Support both flat structure (from manual form) and nested (from legacy runner if any)
-    const rawLinkId = body.linkId || body.testLinkId;
+    // Extract linkId and remove it from the data object to avoid Prisma unknown argument error
+    const { testLinkId, linkId, ...restBody } = body;
+    const rawLinkId = linkId || testLinkId;
+
     if (!rawLinkId) {
         throw new Error('testLinkId is missing');
     }
 
     const data = {
-        testLinkId: rawLinkId,
-        cpfCnpj: body.cpfCnpj || body.identificador,
+        testLink: {
+            connect: { id: rawLinkId }
+        },
+        cpfCnpj: restBody.cpfCnpj || restBody.identificador,
         
         // Device
-        deviceType: body.deviceType || body.plataforma, // Mapping 'plataforma' to deviceType/os logic if needed
-        os: body.os || body.plataforma || (body.device?.os),
-        browser: body.browser || (body.device?.browser),
-        browserVersion: body.versao || body.browserVersion,
-        userAgent: body.userAgent || (body.device?.userAgent),
-        ram: body.memoria || (body.device?.deviceMemory?.toString()), // Convert to string
-        cpuCores: body.processadores || (body.device?.hardwareConcurrency),
-        gpu: body.gpu || (body.device?.gpu),
+        deviceType: restBody.deviceType || restBody.plataforma, 
+        os: restBody.os || restBody.plataforma || (restBody.device?.os),
+        browser: restBody.browser || (restBody.device?.browser),
+        browserVersion: restBody.versao || restBody.browserVersion,
+        userAgent: restBody.userAgent || (restBody.device?.userAgent),
+        ram: restBody.memoria || (restBody.device?.deviceMemory?.toString()), 
+        cpuCores: restBody.processadores || (restBody.device?.hardwareConcurrency),
+        gpu: restBody.gpu || (restBody.device?.gpu),
         
         // Network
-        publicIp: body.ip || body.publicIp || (body.network?.ip),
-        ipv6: body.ipv6 || (body.network?.ipv6),
-        isIpv6: body.isIpv6 === "Sim" || body.isIpv6 === true, // Handle "Não é IPv6" string vs boolean if needed
-        provider: body.provedor || body.provider,
-        connectionType: body.connectionType || (body.network?.connectionType),
-        localIp: body.localIp,
+        publicIp: restBody.ip || restBody.publicIp || (restBody.network?.ip),
+        ipv6: restBody.ipv6 || (restBody.network?.ipv6),
+        isIpv6: restBody.isIpv6 === "Sim" || restBody.isIpv6 === true,
+        provider: restBody.provedor || restBody.provider,
+        connectionType: restBody.connectionType || (restBody.network?.connectionType),
+        localIp: restBody.localIp,
 
         // MTU/MSS
-        mtu: Number(body.mtu) || undefined,
-        mss: Number(body.mss) || undefined,
+        mtu: Number(restBody.mtu) || undefined,
+        mss: Number(restBody.mss) || undefined,
         
         // Speed
-        downloadAvg: Number(body.downloadAvg) || Number(body.speed?.download) || undefined,
-        downloadMax: Number(body.downloadMax) || undefined,
-        uploadAvg: Number(body.uploadAvg) || Number(body.speed?.upload) || undefined,
-        uploadMax: Number(body.uploadMax) || undefined,
-        ping: Number(body.ping) || Number(body.speed?.ping) || undefined,
-        jitter: Number(body.jitter) || Number(body.speed?.jitter) || undefined,
-        jitterStatus: body.jitterStatus,
+        downloadAvg: Number(restBody.downloadAvg) || Number(restBody.speed?.download) || undefined,
+        downloadMax: Number(restBody.downloadMax) || undefined,
+        uploadAvg: Number(restBody.uploadAvg) || Number(restBody.speed?.upload) || undefined,
+        uploadMax: Number(restBody.uploadMax) || undefined,
+        ping: Number(restBody.ping) || Number(restBody.speed?.ping) || undefined,
+        jitter: Number(restBody.jitter) || Number(restBody.speed?.jitter) || undefined,
+        jitterStatus: restBody.jitterStatus,
         
         // Streaming
-        sdStatus: body.sdStatus,
-        hdStatus: body.hdStatus || (body.streaming?.hd ? "OK" : "Dificuldades"),
-        ultraHdStatus: body.ultraHdStatus || (body.streaming?.uhd ? "OK" : "Dificuldades"),
-        status4k: body.status4k,
-        liveStatus: body.liveStatus,
+        sdStatus: restBody.sdStatus,
+        hdStatus: restBody.hdStatus || (restBody.streaming?.hd ? "OK" : "Dificuldades"),
+        ultraHdStatus: restBody.ultraHdStatus || (restBody.streaming?.uhd ? "OK" : "Dificuldades"),
+        status4k: restBody.status4k,
+        liveStatus: restBody.liveStatus,
         
         // Quality
-        qualitySpeed: Number(body.qualitySpeed) || undefined,
-        qualityLatency: Number(body.qualityLatency) || undefined,
-        packetLoss: Number(body.packetLoss) || undefined,
-        signalStatus: body.signalStatus,
+        qualitySpeed: Number(restBody.qualitySpeed) || undefined,
+        qualityLatency: Number(restBody.qualityLatency) || undefined,
+        packetLoss: Number(restBody.packetLoss) || undefined,
+        signalStatus: restBody.signalStatus,
         
         // Metrics
-        pageLoadMetrics: body.pageLoadMetrics,
-        externalStatus: body.externalStatus
+        pageLoadMetrics: restBody.pageLoadMetrics,
+        externalStatus: restBody.externalStatus
     };
 
     const result = await prisma.testResult.create({
