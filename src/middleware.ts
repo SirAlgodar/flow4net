@@ -8,6 +8,11 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
   const { pathname } = request.nextUrl;
 
+  // Debug logs for troubleshooting login issues
+  if (pathname === '/login' || pathname.startsWith('/admin')) {
+    console.log(`[Middleware] Accessing: ${pathname}, Token present: ${!!token}`);
+  }
+  
   // 1. If trying to access login page
   if (pathname === '/login') {
     if (token) {
@@ -17,6 +22,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/admin', request.url));
       } catch (e) {
         // Token invalid, let them login
+        console.error('[Middleware] Token verification failed on /login check:', e);
         return NextResponse.next();
       }
     }
@@ -34,6 +40,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     } catch (e) {
       // Token invalid
+      console.error('[Middleware] Token verification failed on /admin check:', e);
       return NextResponse.redirect(new URL('/login', request.url));
     }
   }

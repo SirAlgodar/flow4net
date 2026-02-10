@@ -43,8 +43,11 @@ export default function LoginPage() {
       }
 
       // Success
-      router.push('/admin'); // Redirect to dashboard
+      console.log('Login realizado com sucesso. Redirecionando...');
+      // Usar window.location.href para garantir que os cookies sejam processados corretamente pelo navegador
+      window.location.href = '/admin'; 
     } catch (err: any) {
+      console.error('Erro no login:', err);
       setError(err.message);
     } finally {
       setLoading(false);
