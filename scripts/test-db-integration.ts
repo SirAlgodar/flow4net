@@ -36,8 +36,8 @@ async function main() {
     data: {
       testLinkId: link.id,
       cpfCnpj: '12345678900',
-      downloadSpeed: 100.5,
-      uploadSpeed: 50.2,
+      downloadAvg: 100.5,
+      uploadAvg: 50.2,
       ping: 10,
       externalStatus: { google: 'up', netflix: 'down' }
     }

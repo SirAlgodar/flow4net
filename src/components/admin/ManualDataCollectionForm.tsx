@@ -15,7 +15,6 @@ export function ManualDataCollectionForm() {
   const form = useForm<TestResultFormData>({
     resolver: zodResolver(TestResultSchema),
     defaultValues: {
-      // Campos iniciais vazios ou com valores padrão
       isIpv6: false,
       ultraHdStatus: false,
     }
@@ -27,10 +26,16 @@ export function ManualDataCollectionForm() {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
+      // Convert booleans to strings if necessary for API/DB
+      const payload = {
+        ...data,
+        ultraHdStatus: data.ultraHdStatus === true ? "OK" : (data.ultraHdStatus === false ? "Dificuldades" : data.ultraHdStatus),
+      };
+
       const response = await fetch('/api/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -42,8 +47,6 @@ export function ManualDataCollectionForm() {
       
       alert('Dados salvos com sucesso!');
       reset();
-      // Opcional: redirecionar para a lista de testes
-      // router.push('/admin/tests');
     } catch (error: any) {
       console.error('Erro ao salvar:', error);
       setSubmitError(error.message || 'Erro desconhecido ao salvar.');
@@ -72,11 +75,18 @@ export function ManualDataCollectionForm() {
             <div>
               <label className="block text-sm font-medium text-gray-700">CPF / CNPJ</label>
               <input 
-                {...register('cpfCnpj')} 
+                {...register('identificador')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
                 placeholder="000.000.000-00"
               />
-              {errors.cpfCnpj && <p className="text-red-500 text-xs mt-1">{errors.cpfCnpj.message}</p>}
+              {errors.identificador && <p className="text-red-500 text-xs mt-1">{errors.identificador.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Solicitante</label>
+              <input 
+                {...register('solicitante')} 
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+              />
             </div>
           </div>
         </section>
@@ -88,36 +98,38 @@ export function ManualDataCollectionForm() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Navegador</label>
               <input 
-                {...register('browser')} 
+                {...register('navegador')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+              {errors.navegador && <p className="text-red-500 text-xs mt-1">{errors.navegador.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Versão do Navegador</label>
               <input 
-                {...register('browserVersion')} 
+                {...register('versao')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">SO (Sistema Operacional)</label>
               <input 
-                {...register('os')} 
+                {...register('plataforma')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.plataforma && <p className="text-red-500 text-xs mt-1">{errors.plataforma.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">CPU Cores</label>
+              <label className="block text-sm font-medium text-gray-700">Processadores</label>
               <input 
                 type="number"
-                {...register('cpuCores')} 
+                {...register('processadores')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">RAM</label>
+              <label className="block text-sm font-medium text-gray-700">Memória</label>
               <input 
-                {...register('ram')} 
+                {...register('memoria')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
             </div>
@@ -138,16 +150,18 @@ export function ManualDataCollectionForm() {
              <div>
               <label className="block text-sm font-medium text-gray-700">Provedor</label>
               <input 
-                {...register('provider')} 
+                {...register('provedor')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+              {errors.provedor && <p className="text-red-500 text-xs mt-1">{errors.provedor.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">IP Público</label>
               <input 
-                {...register('publicIp')} 
+                {...register('ip')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.ip && <p className="text-red-500 text-xs mt-1">{errors.ip.message}</p>}
             </div>
              <div>
               <label className="block text-sm font-medium text-gray-700">IP Local</label>
@@ -163,6 +177,7 @@ export function ManualDataCollectionForm() {
                 {...register('mtu')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+              {errors.mtu && <p className="text-red-500 text-xs mt-1">{errors.mtu.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">MSS</label>
@@ -171,6 +186,7 @@ export function ManualDataCollectionForm() {
                 {...register('mss')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.mss && <p className="text-red-500 text-xs mt-1">{errors.mss.message}</p>}
             </div>
             <div className="flex items-center mt-6">
               <input 
@@ -191,19 +207,19 @@ export function ManualDataCollectionForm() {
               <label className="block text-sm font-medium text-gray-700">Download (Mbps)</label>
               <input 
                 type="number" step="0.01"
-                {...register('downloadSpeed')} 
+                {...register('downloadAvg')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
-              {errors.downloadSpeed && <p className="text-red-500 text-xs mt-1">{errors.downloadSpeed.message}</p>}
+              {errors.downloadAvg && <p className="text-red-500 text-xs mt-1">{errors.downloadAvg.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Upload (Mbps)</label>
               <input 
                 type="number" step="0.01"
-                {...register('uploadSpeed')} 
+                {...register('uploadAvg')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
-              {errors.uploadSpeed && <p className="text-red-500 text-xs mt-1">{errors.uploadSpeed.message}</p>}
+              {errors.uploadAvg && <p className="text-red-500 text-xs mt-1">{errors.uploadAvg.message}</p>}
             </div>
              <div>
               <label className="block text-sm font-medium text-gray-700">Ping (ms)</label>
@@ -212,6 +228,7 @@ export function ManualDataCollectionForm() {
                 {...register('ping')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.ping && <p className="text-red-500 text-xs mt-1">{errors.ping.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Jitter (ms)</label>
@@ -220,6 +237,7 @@ export function ManualDataCollectionForm() {
                 {...register('jitter')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.jitter && <p className="text-red-500 text-xs mt-1">{errors.jitter.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Perda de Pacotes (%)</label>
@@ -228,6 +246,7 @@ export function ManualDataCollectionForm() {
                 {...register('packetLoss')} 
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
               />
+               {errors.packetLoss && <p className="text-red-500 text-xs mt-1">{errors.packetLoss.message}</p>}
             </div>
             <div className="flex items-center mt-6">
               <input 
