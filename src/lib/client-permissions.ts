@@ -83,4 +83,38 @@ export class ClientPermissions {
 
     return { granted: false, error: 'Permission previously denied' };
   }
+
+  /**
+   * Request Network Information permissions (Android specific mostly)
+   * On Web, this is mostly tied to Geolocation for scanning or just accessing navigator.connection
+   */
+  static async requestNetworkPermissions(): Promise<PermissionResult> {
+    // 1. Check if Network Information API is available
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    
+    // 2. Request Geolocation (often required for detailed network info on mobile)
+    const geoResult = await this.requestGeolocation();
+    
+    if (!geoResult.granted) {
+        return { 
+            granted: false, 
+            error: geoResult.error || 'Location permission denied (required for network details)' 
+        };
+    }
+
+    // 3. Return combined success
+    return {
+        granted: true,
+        data: {
+            geolocation: geoResult.data,
+            connection: conn ? {
+                type: conn.type,
+                effectiveType: conn.effectiveType,
+                downlink: conn.downlink,
+                rtt: conn.rtt,
+                saveData: conn.saveData
+            } : null
+        }
+    };
+  }
 }
