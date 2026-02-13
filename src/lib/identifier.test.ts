@@ -1,33 +1,26 @@
 import { getIdentifierInfo } from './identifier';
-import assert from 'assert';
 
-console.log('Running Identifier Logic Tests...');
+describe('Identifier Logic', () => {
+    test('should identify Operator correctly', () => {
+        const op = getIdentifierInfo('IDENTIFIED');
+        expect(op.label).toBe('Operador');
+        expect(op.color).toContain('blue');
+    });
 
-try {
-    // Test Operator
-    const op = getIdentifierInfo('IDENTIFIED');
-    assert.strictEqual(op.label, 'Operador');
-    assert.ok(op.color.includes('blue'), 'Operator should be blue');
-    console.log('✅ Operator Test Passed');
+    test('should identify Client correctly', () => {
+        const cl = getIdentifierInfo('QUICK');
+        expect(cl.label).toBe('Cliente');
+        expect(cl.color).toContain('green');
+    });
 
-    // Test Client
-    const cl = getIdentifierInfo('QUICK');
-    assert.strictEqual(cl.label, 'Cliente');
-    assert.ok(cl.color.includes('green'), 'Client should be green');
-    console.log('✅ Client Test Passed');
+    test('should identify Anonymous correctly', () => {
+        const anon = getIdentifierInfo('UNIDENTIFIED');
+        expect(anon.label).toBe('Anônimo');
+        expect(anon.color).toContain('gray');
+    });
 
-    // Test Anonymous
-    const anon = getIdentifierInfo('UNIDENTIFIED');
-    assert.strictEqual(anon.label, 'Anônimo');
-    assert.ok(anon.color.includes('gray'), 'Anonymous should be gray');
-    console.log('✅ Anonymous Test Passed');
-    
-    // Test Unknown
-    const unknown = getIdentifierInfo('UNKNOWN_TYPE');
-    assert.strictEqual(unknown.label, 'Anônimo');
-    console.log('✅ Unknown Type Test Passed');
-
-} catch (e) {
-    console.error('❌ Test Failed:', e);
-    process.exit(1);
-}
+    test('should handle unknown type as Anonymous', () => {
+        const unknown = getIdentifierInfo('UNKNOWN_TYPE');
+        expect(unknown.label).toBe('Anônimo');
+    });
+});

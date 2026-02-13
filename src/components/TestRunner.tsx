@@ -1,10 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { DiagnosticsEngine, DiagnosticResult } from '@/lib/diagnostics';
-import { Loader2, CheckCircle, Wifi, Gauge, Smartphone, Globe, Play, AlertTriangle, XCircle, Monitor, Gamepad2, Video, Radio, Activity, ChevronDown, ChevronUp, Server } from 'lucide-react';
+import { Loader2, CheckCircle, Wifi, Gauge, Smartphone, Globe, Play, AlertTriangle, XCircle, Monitor, Gamepad2, Video, Radio, Activity, ChevronDown, ChevronUp, Server, Shield } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { WifiInfo } from '@/components/WifiInfo';
+import { PrivacyConsent, ConsentOptions } from '@/components/PrivacyConsent';
+import { ClientPermissions } from '@/lib/client-permissions';
+import { NetworkQuality } from '@/components/NetworkQuality';
+import { calculateQoE, NetworkMetrics, QoEResult } from '@/lib/quality-calculator';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,8 +34,38 @@ export function TestRunner({ code }: { code: string }) {
   const [retryCount, setRetryCount] = useState(0);
   const [offlineMode, setOfflineMode] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  
+  // Consent State
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [consentOptions, setConsentOptions] = useState<ConsentOptions | null>(null);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+
+  // QoE State
+  const [qoeHistory, setQoeHistory] = useState<(QoEResult & { timestamp: number })[]>([]);
+  const [currentMetrics, setCurrentMetrics] = useState<NetworkMetrics>({
+      latency: 0,
+      jitter: 0,
+      downloadSpeed: 0,
+      uploadSpeed: 0,
+      packetLoss: 0,
+      rssi: undefined
+  });
 
   useEffect(() => {
+    // Load history
+    const stored = localStorage.getItem('qoe_history');
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            const now = Date.now();
+            // Filter last 30 mins
+            const filtered = parsed.filter((item: any) => now - item.timestamp < 30 * 60 * 1000);
+            setQoeHistory(filtered);
+        } catch (e) {
+            console.error('Failed to parse history', e);
+        }
+    }
+
     const syncOfflineResults = async () => {
         const cached = localStorage.getItem('offline_results');
         if (cached) {
@@ -81,19 +116,68 @@ export function TestRunner({ code }: { code: string }) {
       });
   }, [code]);
 
-  const runTest = async () => {
+  const runTest = async (options?: ConsentOptions) => {
     if (linkData.type !== 'UNIDENTIFIED' && !cpfCnpj) {
         alert('Por favor informe o CPF/CNPJ para continuar');
         return;
     }
     
+    // Use provided options or fall back to state (though state might be stale if called immediately)
+    const activeConsent = options || consentOptions;
+    console.log("[TestRunner] Starting test with consent:", activeConsent);
+
     setHasStarted(true);
     setFinished(false);
     setCurrentStep(1);
 
-    const engine = new DiagnosticsEngine((s, p) => {
+    // Prepare Context
+    const context: any = {};
+    
+    // Request permissions immediately based on active consent
+    if (activeConsent?.location) {
+        setStatusMsg("Solicitando permissão de localização...");
+        console.log("[TestRunner] Requesting geolocation...");
+        try {
+            const loc = await ClientPermissions.requestGeolocation();
+            console.log("[TestRunner] Geolocation result:", loc);
+            if (loc.granted) {
+                context.location = loc.data;
+            } else {
+                console.warn("Location denied or unavailable:", loc.error);
+            }
+        } catch (e) {
+            console.error("Error requesting location:", e);
+        }
+    } else {
+        console.log("[TestRunner] Location permission not requested (consent not given)");
+    }
+
+    if (activeConsent?.media) {
+        setStatusMsg("Verificando dispositivos de mídia...");
+        console.log("[TestRunner] Requesting media devices...");
+        try {
+            const media = await ClientPermissions.requestMediaDevices();
+            console.log("[TestRunner] Media result:", media);
+            context.mediaCheck = {
+                granted: media.granted,
+                camera: media.granted && media.data?.some((t: any) => t.kind === 'video'),
+                mic: media.granted && media.data?.some((t: any) => t.kind === 'audio'),
+                details: media.data
+            };
+        } catch (e) {
+             console.error("Error requesting media:", e);
+             context.mediaCheck = { granted: false, error: String(e) };
+        }
+    } else {
+        console.log("[TestRunner] Media permission not requested (consent not given)");
+    }
+
+    const engine = new DiagnosticsEngine((s, p, partial) => {
         setStatusMsg(s);
         setProgress(p);
+        if (partial) {
+            setCurrentMetrics(prev => ({ ...prev, ...partial }));
+        }
         if (p < 20) setCurrentStep(1); 
         else if (p < 40) setCurrentStep(2); 
         else if (p < 85) setCurrentStep(3); 
@@ -101,10 +185,20 @@ export function TestRunner({ code }: { code: string }) {
     });
 
     try {
-        const res = await engine.run();
+        const res = await engine.run(context);
         setResult(res);
         setFinished(true);
         setCurrentStep(5);
+        
+        // Save to History
+        if (res.quality) {
+            const entry = { ...res.quality, timestamp: Date.now() } as unknown as (QoEResult & { timestamp: number });
+            setQoeHistory(prev => {
+                const updated = [...prev, entry].filter(item => Date.now() - item.timestamp < 30 * 60 * 1000);
+                localStorage.setItem('qoe_history', JSON.stringify(updated));
+                return updated;
+            });
+        }
         
         // Map DiagnosticResult to API Payload
         const payload = {
@@ -161,11 +255,22 @@ export function TestRunner({ code }: { code: string }) {
         };
 
         try {
-            await fetch('/api/results', {
+            console.log('Sending result payload:', JSON.stringify(payload, null, 2));
+            const response = await fetch('/api/results', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Server returned error:', response.status, errorText);
+                throw new Error(`Server error: ${response.status} - ${errorText}`);
+            }
+            
+            const responseData = await response.json();
+            console.log('Result saved successfully:', responseData);
+
         } catch (postError) {
             console.warn('Failed to send results, caching locally', postError);
             const cached = JSON.parse(localStorage.getItem('offline_results') || '[]');
@@ -207,33 +312,47 @@ export function TestRunner({ code }: { code: string }) {
                 )}
             </div>
 
-            {/* Quality Score */}
+            {/* Quality Score & Analysis */}
             {result.quality && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                        <div className="p-4 bg-blue-500/10 rounded-full">
-                            <Activity className="h-8 w-8 text-blue-500" />
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold text-white">Qualidade da Conexão</h3>
-                            <p className={`text-2xl font-black ${
-                                result.quality.rating === 'Excelente' ? 'text-green-500' : 
-                                result.quality.rating === 'Bom' ? 'text-blue-500' :
-                                result.quality.rating === 'Regular' ? 'text-yellow-500' : 'text-red-500'
-                            }`}>{result.quality.rating}</p>
-                        </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="w-full">
+                        <NetworkQuality 
+                            metrics={{
+                                latency: result.speed.ping,
+                                jitter: result.speed.jitter,
+                                downloadSpeed: result.speed.downloadAvg,
+                                uploadSpeed: result.speed.uploadAvg,
+                                packetLoss: result.bandwidth.packetLoss,
+                                rssi: result.network.rssi
+                            }}
+                            qoe={result.quality as unknown as QoEResult}
+                            history={qoeHistory}
+                        />
                     </div>
-                    <div className="flex-1 w-full md:w-auto">
+                    
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
+                         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Activity className="text-blue-500"/> Análise Detalhada</h3>
+                         
                          {result.quality.issues.length > 0 ? (
-                            <div className="bg-red-950/20 border border-red-900/50 rounded p-3">
-                                <p className="text-red-400 text-sm font-semibold mb-1">Atenção Necessária:</p>
-                                <ul className="list-disc list-inside text-xs text-red-300">
+                            <div className="bg-red-950/20 border border-red-900/50 rounded-lg p-4 mb-4">
+                                <p className="text-red-400 font-semibold mb-2 flex items-center gap-2"><AlertTriangle size={18}/> Pontos de Atenção</p>
+                                <ul className="list-disc list-inside text-sm text-red-300 space-y-2">
                                     {result.quality.issues.map((i, k) => <li key={k}>{i}</li>)}
                                 </ul>
                             </div>
                          ) : (
-                             <div className="text-green-500 text-sm flex items-center gap-2">
-                                 <CheckCircle size={16}/> Nenhum problema detectado
+                             <div className="text-green-500 flex items-center gap-3 p-4 bg-green-950/20 border border-green-900/30 rounded-lg mb-4">
+                                 <CheckCircle size={24}/> 
+                                 <span className="font-medium">Sua conexão está excelente! Nenhum problema crítico detectado.</span>
+                             </div>
+                         )}
+                         
+                         {result.quality.recommendations && result.quality.recommendations.length > 0 && (
+                             <div className="bg-blue-950/20 border border-blue-900/30 rounded-lg p-4">
+                                 <p className="text-blue-400 font-semibold mb-2 flex items-center gap-2"><Shield size={18}/> Recomendações</p>
+                                 <ul className="list-disc list-inside text-sm text-slate-300 space-y-2">
+                                     {result.quality.recommendations.map((r, k) => <li key={k}>{r}</li>)}
+                                 </ul>
                              </div>
                          )}
                     </div>
@@ -268,8 +387,22 @@ export function TestRunner({ code }: { code: string }) {
                                 <DetailRow label="Provedor" value={result.network.provider} />
                                 <DetailRow label="IP Público" value={result.network.ip} />
                                 <DetailRow label="IPv6" value={result.network.ipv6} />
-                                <DetailRow label="Tipo" value={result.network.connectionType} />
+                                <DetailRow label="Tipo de Conexão" value={result.network.connectionType} />
+                                {result.network.ssid && (
+                                    <>
+                                        <DetailRow label="Rede WiFi (SSID)" value={result.network.ssid} />
+                                        <DetailRow label="Sinal (RSSI)" value={`${result.network.rssi} dBm`} />
+                                    </>
+                                )}
+                                {result.network.effectiveType && (
+                                    <DetailRow label="Qualidade Estimada" value={result.network.effectiveType.toUpperCase()} />
+                                )}
                                 <DetailRow label="MTU / MSS" value={`${result.mtu.mtu} / ${result.mtu.mss}`} />
+                                {!result.network.ssid && (
+                                    <div className="mt-2 p-2 bg-yellow-900/10 border border-yellow-900/30 rounded text-xs text-yellow-500/80">
+                                        Nota: SSID e Frequência não disponíveis via Web. A detecção de WiFi/4G depende do suporte do navegador.
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
@@ -281,6 +414,40 @@ export function TestRunner({ code }: { code: string }) {
                                 <DetailRow label="GPU" value={result.device.gpu} />
                             </div>
                         </div>
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Activity size={18}/> Teste</h4>
+                            <div className="space-y-2 text-sm">
+                                <DetailRow label="Servidor" value={"Localhost (Proxy)"} />
+                                <DetailRow label="Latência" value={`${result.speed.ping.toFixed(0)} ms`} />
+                                <DetailRow label="Jitter" value={`${result.speed.jitter.toFixed(0)} ms`} />
+                                <div className="mt-2 p-2 bg-blue-900/10 border border-blue-900/30 rounded text-xs text-blue-400/80">
+                                    Nota: Teste de Download mede a velocidade da internet. Teste de Upload mede a conexão local com o servidor.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Location & Media Permissions Data */}
+                        {(result.location || result.mediaCheck?.granted) && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                                <h4 className="font-bold text-white mb-4 flex items-center gap-2"><Shield size={18}/> Permissões & Dados Sensíveis</h4>
+                                <div className="space-y-2 text-sm">
+                                    {result.location && (
+                                        <>
+                                            <DetailRow label="Latitude" value={result.location.latitude.toFixed(6)} />
+                                            <DetailRow label="Longitude" value={result.location.longitude.toFixed(6)} />
+                                            <DetailRow label="Precisão" value={`±${result.location.accuracy.toFixed(0)}m`} />
+                                        </>
+                                    )}
+                                    {result.mediaCheck?.granted && (
+                                        <>
+                                            <div className="pt-2 pb-1 text-xs text-slate-500 font-bold uppercase">Dispositivos de Mídia</div>
+                                            <DetailRow label="Acesso à Câmera" value={result.mediaCheck.camera ? "Sim" : "Não detectado"} />
+                                            <DetailRow label="Acesso ao Mic" value={result.mediaCheck.mic ? "Sim" : "Não detectado"} />
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Streaming Support */}
@@ -342,13 +509,33 @@ export function TestRunner({ code }: { code: string }) {
 
             <div className="flex justify-center mt-8">
                 <button 
-                    onClick={() => window.location.reload()}
-                    className="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-500 font-bold shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
+                    onClick={() => runTest()}
+                    className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-500 font-bold shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
                 >
+                    <Play className="h-5 w-5 fill-current" />
                     Realizar Novo Teste
                 </button>
             </div>
         </div>
+
+        {/* Privacy Consent Modal */}
+        {!loading && !error && !consentGiven && (
+            <PrivacyConsent 
+                onAccept={(options) => {
+                    setConsentOptions(options);
+                    setConsentGiven(true);
+                    // Start test immediately with explicit options to ensure permissions work
+                    // and to bypass React state update delay
+                    runTest(options);
+                }}
+                onDeny={() => {
+                    const fallback = { essential: true, location: false, media: false };
+                    setConsentOptions(fallback);
+                    setConsentGiven(true);
+                    runTest(fallback);
+                }}
+            />
+        )}
       </div>
     );
   }
@@ -388,8 +575,12 @@ export function TestRunner({ code }: { code: string }) {
                     </div>
                 )}
 
+                <div className="mb-8">
+                    <WifiInfo />
+                </div>
+
                 <button 
-                    onClick={runTest}
+                    onClick={() => !consentGiven ? setShowConsentModal(true) : runTest()}
                     className="group relative inline-flex items-center gap-3 bg-blue-600 hover:bg-blue-500 px-8 py-4 rounded-full text-xl font-bold transition-all transform hover:scale-105 shadow-xl shadow-blue-500/20"
                 >
                     <Play className="h-6 w-6 fill-current" /> Iniciar Diagnóstico
@@ -400,21 +591,40 @@ export function TestRunner({ code }: { code: string }) {
                 <div className="mb-8 relative h-48 w-48 mx-auto flex items-center justify-center">
                      {/* Circular Progress */}
                      <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
-                        <circle className="text-slate-800" strokeWidth="8" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" />
-                        <circle 
-                            className="text-blue-500 transition-all duration-500 ease-out" 
-                            strokeWidth="8" 
-                            strokeDasharray={`${2 * Math.PI * 40}`} 
-                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - progress / 100)}`}
-                            strokeLinecap="round" 
-                            stroke="currentColor" 
-                            fill="transparent" 
-                            r="40" cx="50" cy="50" 
+                        <circle
+                            className="text-slate-800"
+                            strokeWidth="8"
+                            stroke="currentColor"
+                            fill="transparent"
+                            r="42"
+                            cx="50"
+                            cy="50"
                         />
-                     </svg>
-                     <div className="absolute inset-0 flex items-center justify-center flex-col">
-                         <span className="text-4xl font-bold">{Math.round(progress)}%</span>
-                     </div>
+                        <circle
+                            className="text-blue-500 transition-all duration-500 ease-out"
+                            strokeWidth="8"
+                            strokeDasharray={264}
+                            strokeDashoffset={264 - (264 * progress) / 100}
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="transparent"
+                            r="42"
+                            cx="50"
+                            cy="50"
+                        />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-4xl font-bold text-white">{Math.round(progress)}%</span>
+                        <span className="text-xs text-slate-400 uppercase tracking-wider mt-1">Concluído</span>
+                    </div>
+                </div>
+
+                <div className="mb-8 w-full">
+                    <NetworkQuality 
+                        metrics={currentMetrics} 
+                        qoe={calculateQoE(currentMetrics)} 
+                        history={qoeHistory}
+                    />
                 </div>
                 
                 <h3 className="text-2xl font-bold mb-2 animate-pulse">{statusMsg}</h3>
@@ -425,6 +635,25 @@ export function TestRunner({ code }: { code: string }) {
                     <StepIndicator active={currentStep >= 4} />
                 </div>
             </div>
+        )}
+
+        {showConsentModal && (
+            <PrivacyConsent 
+                onAccept={(options) => {
+                    setConsentOptions(options);
+                    setConsentGiven(true);
+                    setShowConsentModal(false);
+                    // Start test immediately with explicit options
+                    runTest(options);
+                }}
+                onDeny={() => {
+                    const fallback = { essential: true, location: false, media: false };
+                    setConsentOptions(fallback);
+                    setConsentGiven(true);
+                    setShowConsentModal(false);
+                    runTest(fallback);
+                }}
+            />
         )}
       </main>
     </div>

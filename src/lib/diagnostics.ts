@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { calculateQoE, NetworkMetrics } from './quality-calculator';
 
 // Define the comprehensive result interface matching the user's PDF model
 export interface DiagnosticResult {
@@ -29,6 +30,9 @@ export interface DiagnosticResult {
     localIp: string; // WebRTC leak or N/A
     ipv6: string; // "Não é IPv6" or the IP
     connectionType: string;
+    effectiveType?: string; // Add effective speed type
+    ssid?: string; // Added backend support
+    rssi?: number; // Added backend support
   };
   mtu: {
     mtu: number;
@@ -64,8 +68,26 @@ export interface DiagnosticResult {
   quality?: {
     score: number;
     rating: string;
+    color: string;
     issues: string[];
     recommendations: string[];
+    breakdown?: {
+        latencyScore: number;
+        jitterScore: number;
+        speedScore: number;
+        signalScore?: number;
+    };
+  };
+  location?: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  };
+  mediaCheck?: {
+    granted: boolean;
+    camera: boolean;
+    mic: boolean;
+    details?: any[];
   };
 }
 
@@ -83,11 +105,26 @@ export interface ServiceStatus {
   latency?: number;
 }
 
-export class DiagnosticsEngine {
-  private updateCallback: (status: string, progress: number) => void;
-  private timings: Record<string, number> = {};
+interface TestConfig {
+  testDuration: number;
+  downloadChunkSize: number;
+  uploadChunkSize: number;
+  threads: number;
+  description: string;
+}
 
-  constructor(onUpdate: (status: string, progress: number) => void) {
+export class DiagnosticsEngine {
+  private updateCallback: (status: string, progress: number, partialMetrics?: Partial<NetworkMetrics>) => void;
+  private timings: Record<string, number> = {};
+  private config: TestConfig = {
+    testDuration: 10000,
+    downloadChunkSize: 512 * 1024,
+    uploadChunkSize: 256 * 1024,
+    threads: 2,
+    description: 'Default'
+  };
+
+  constructor(onUpdate: (status: string, progress: number, partialMetrics?: Partial<NetworkMetrics>) => void) {
     this.updateCallback = onUpdate;
   }
 
@@ -102,9 +139,27 @@ export class DiagnosticsEngine {
     return `${Math.round(duration)}ms`;
   }
 
-  async run(): Promise<DiagnosticResult> {
+  private async fetchConfig() {
+    try {
+      const res = await fetch('/api/config/test-parameters');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          this.config = data.config;
+          console.log('Applied platform config:', this.config);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch test config, using defaults', e);
+    }
+  }
+
+  async run(context: any = {}): Promise<DiagnosticResult> {
     const totalStart = performance.now();
     this.startTimer('total');
+
+    // Fetch config first
+    await this.fetchConfig();
 
     // --- 1. Device Info ---
     this.updateCallback('Coletando informações do dispositivo...', 5);
@@ -114,6 +169,8 @@ export class DiagnosticsEngine {
     this.updateCallback('Analisando rede e IPv6...', 10);
     this.startTimer('ipv6');
     const networkInfo = await this.getNetworkInfo();
+    // Pass initial metrics including RSSI to callback for UI
+    this.updateCallback('Rede analisada', 12, { rssi: networkInfo.rssi });
     const durationIPv6 = this.stopTimer('ipv6');
 
     // --- 3. MTU / MSS ---
@@ -162,7 +219,23 @@ export class DiagnosticsEngine {
     this.startTimer('datasend');
     
     // Quality Analysis
-    const quality = this.analyzeQuality(downloadData.avg, uploadData.avg, latencyData.ping, latencyData.jitter, bandwidthData.packetLoss);
+    const qoeResult = calculateQoE({
+      latency: latencyData.ping,
+      jitter: latencyData.jitter,
+      downloadSpeed: downloadData.avg,
+      uploadSpeed: uploadData.avg,
+      packetLoss: bandwidthData.packetLoss,
+      rssi: networkInfo.rssi
+    });
+
+    const quality = {
+      score: qoeResult.score,
+      rating: qoeResult.rating,
+      color: qoeResult.color,
+      issues: [],
+      recommendations: [],
+      breakdown: qoeResult.breakdown
+    };
 
     const totalDuration = ((performance.now() - totalStart) / 1000).toFixed(2) + 's';
     const durationDataSend = "0ms"; // Placeholder for actual send time
@@ -197,7 +270,9 @@ export class DiagnosticsEngine {
       pageResponse: pageMetrics,
       pageOpening: pageMetrics, // Duplicated for now as we don't have separate "opening" vs "response" logic
       downdetector: downdetectorData,
-      quality
+      quality,
+      location: context.location,
+      mediaCheck: context.mediaCheck
     };
   }
 
@@ -233,7 +308,7 @@ export class DiagnosticsEngine {
       }
     } catch (e) {}
 
-    return {
+    const info = {
       platform,
       browser,
       version,
@@ -242,6 +317,9 @@ export class DiagnosticsEngine {
       gpu,
       userAgent: ua
     };
+    
+    console.log('Device Info Detected:', info);
+    return info;
   }
 
   private async getNetworkInfo() {
@@ -260,15 +338,62 @@ export class DiagnosticsEngine {
         }
       } catch (e) {}
 
+      // Fetch ISP/Provider info using a public IP API
+      let provider = "Desconhecido";
+      try {
+        if (dataV4.ip && dataV4.ip !== 'Falha') {
+            // Using ip-api.com (free for non-commercial use, no key needed for basic usage)
+            // Warning: Rate limits apply. In production, use a paid service or backend proxy.
+            const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
+            if (resGeo.ok) {
+                const geoData = await resGeo.json();
+                provider = geoData.isp || geoData.org || geoData.as || "Desconhecido";
+            }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch ISP info:", e);
+      }
+
       // Connection API
       const conn = (navigator as any).connection || {};
+      
+      const type = conn.type;
+      let displayType = "Indefinido (Limitação Web)";
+      
+      if (type) {
+        displayType = type === 'wifi' ? 'WiFi' : 
+                      type === 'cellular' ? 'Dados Móveis' : 
+                      type === 'ethernet' ? 'Cabo' : type;
+      }
+
+      // Try to fetch backend WiFi info if available (Local/Kiosk mode)
+      let ssid = undefined;
+      let rssi = undefined;
+      try {
+          const wifiRes = await fetch('/api/network/wifi');
+          if (wifiRes.ok) {
+              const wifiData = await wifiRes.json();
+              if (wifiData.connected && wifiData.data) {
+                  ssid = wifiData.data.ssid;
+                  rssi = wifiData.data.signal_level;
+                  if (!type || type === 'unknown') {
+                      displayType = "WiFi (Local)";
+                  }
+              }
+          }
+      } catch (e) {
+          console.warn("Could not fetch backend WiFi info during test");
+      }
 
       return {
-        provider: "Desconhecido", // Would need GeoIP API for this
+        provider,
         ip: dataV4.ip,
         localIp: "Oculto", // Browsers hide this for security
         ipv6,
-        connectionType: conn.effectiveType || conn.type || "Desconhecido"
+        connectionType: displayType,
+        effectiveType: conn.effectiveType || "Desconhecido",
+        ssid,
+        rssi
       };
     } catch (e) {
       return { provider: "Erro", ip: "Erro", localIp: "Erro", ipv6: "Erro", connectionType: "Erro" };
@@ -286,8 +411,18 @@ export class DiagnosticsEngine {
     // Measure 10 times
     for(let i=0; i<10; i++) {
         const start = performance.now();
-        await fetch('/api/diagnostics/ping', { cache: 'no-store' }); // Simple endpoint
-        pings.push(performance.now() - start);
+        await fetch('/api/ping', { cache: 'no-store', method: 'HEAD' }); 
+        const duration = performance.now() - start;
+        pings.push(duration);
+
+        // Partial update
+        const currentAvg = pings.reduce((a,b) => a+b, 0) / pings.length;
+        const currentJitter = pings.length > 1 ? pings.reduce((acc, curr, idx) => {
+            if (idx === 0) return 0;
+            return acc + Math.abs(curr - pings[idx-1]);
+        }, 0) / (pings.length - 1) : 0;
+
+        this.updateCallback('Medindo latência e jitter...', 25 + i, { latency: currentAvg, jitter: currentJitter });
     }
     
     const min = Math.min(...pings);
@@ -315,31 +450,154 @@ export class DiagnosticsEngine {
   }
 
   private async runDownloadTest(): Promise<number> {
+    let controller: AbortController | null = new AbortController();
+    // Max duration based on config + buffer
+    const timeoutId = setTimeout(() => controller?.abort(), this.config.testDuration + 10000); 
+
+    let received = 0;
+    let measureStartTime = 0;
+    
     try {
-        const startTime = performance.now();
-        const response = await fetch('/api/speedtest/download');
+        const response = await fetch('/api/speedtest/download', { 
+            signal: controller.signal,
+            cache: 'no-store'
+        });
+        
         if (!response.body) return 0;
         const reader = response.body.getReader();
-        let received = 0;
+        
+        let warmupBytes = 0;
+        const startTime = performance.now();
+        let inWarmup = true;
+        let lastUpdate = 0;
+        
         while(true) {
             const {done, value} = await reader.read();
             if(done) break;
-            received += value.length;
+            
+            const chunkSize = value.length;
+            
+            // Warmup logic: Discard first 1s or 1MB of data
+            if (inWarmup) {
+                warmupBytes += chunkSize;
+                const now = performance.now();
+                // Increased warmup time for proxy latency
+                if (now - startTime > 1000 || warmupBytes > 1 * 1024 * 1024) {
+                    inWarmup = false;
+                    measureStartTime = now;
+                    received = 0; // Reset counter for actual measurement
+                }
+            } else {
+                received += chunkSize;
+                const now = performance.now();
+                const duration = (now - measureStartTime) / 1000;
+
+                // Update UI every 200ms
+                if (now - lastUpdate > 200) {
+                    lastUpdate = now;
+                    if (duration > 0.1) {
+                         const currentSpeed = (received * 8) / duration / (1024 * 1024);
+                         // Progress 35-50%
+                         const progress = 35 + Math.min(15, (duration / (this.config.testDuration / 1000)) * 15);
+                         this.updateCallback('Medindo download...', progress, { downloadSpeed: currentSpeed });
+                    }
+                }
+
+                // Stop if we have measured for at least config duration or hit 100MB
+                if (duration > (this.config.testDuration / 1000) || received > 100 * 1024 * 1024) {
+                    await reader.cancel();
+                    break;
+                }
+            }
         }
-        const duration = (performance.now() - startTime) / 1000;
+        
+        clearTimeout(timeoutId);
+        
+        // If we didn't exit warmup or have very little data, use what we have (fallback)
+        if (inWarmup || received < 1000) {
+             received = warmupBytes;
+             measureStartTime = startTime;
+        }
+
+        const duration = (performance.now() - measureStartTime) / 1000;
+        if (duration <= 0) return 0;
+        
         return (received * 8) / duration / (1024 * 1024);
-    } catch { return 0; }
+
+    } catch (e: any) { 
+        clearTimeout(timeoutId);
+        
+        // Treat AbortError as valid completion if we have data
+        if ((e.name === 'AbortError' || e.message?.includes('aborted')) && (received > 1000 || measureStartTime > 0)) {
+            // Use what we have
+            const duration = (performance.now() - (measureStartTime || performance.now())) / 1000;
+            if (duration > 0.1) {
+                return (received * 8) / duration / (1024 * 1024);
+            }
+        }
+
+        console.error("Download test failed:", e);
+        return 0; 
+    }
   }
 
   private async runUploadTest(): Promise<number> {
+    const endTime = performance.now() + this.config.testDuration;
+    let totalBytes = 0;
+    let startTime = performance.now();
+    let measureStartTime = 0;
+    let inWarmup = true;
+    const warmupBytesLimit = 1 * 1024 * 1024; // 1MB warmup
+    const warmupTimeLimit = 2000; // 2s warmup
+
+    // Dynamic chunk size adaptation could be added here, 
+    // but for now we stick to config size
+    const chunk = new Uint8Array(this.config.uploadChunkSize);
+
     try {
-        const size = 2 * 1024 * 1024; // 2MB
-        const data = new Uint8Array(size);
-        const start = performance.now();
-        await fetch('/api/speedtest/upload', { method: 'POST', body: data });
-        const duration = (performance.now() - start) / 1000;
-        return (size * 8) / duration / (1024 * 1024);
-    } catch { return 0; }
+        while (performance.now() < endTime) {
+            const chunkStart = performance.now();
+            await fetch('/api/speedtest/upload', { 
+                method: 'POST', 
+                body: chunk,
+                cache: 'no-store'
+            });
+            const chunkDuration = performance.now() - chunkStart;
+            
+            // Warmup logic
+            if (inWarmup) {
+                totalBytes += chunk.length;
+                if (performance.now() - startTime > warmupTimeLimit || totalBytes > warmupBytesLimit) {
+                    inWarmup = false;
+                    measureStartTime = performance.now();
+                    totalBytes = 0; // Reset for actual measurement
+                    startTime = measureStartTime; // Reset start time for progress calc
+                }
+            } else {
+                totalBytes += chunk.length;
+                const duration = (performance.now() - measureStartTime) / 1000;
+                
+                // Update UI
+                if (duration > 0.2) {
+                    const currentSpeed = (totalBytes * 8) / duration / (1024 * 1024);
+                    // Progress 50-60%
+                    const progress = 50 + Math.min(10, (duration / (this.config.testDuration / 1000)) * 10);
+                    this.updateCallback('Medindo upload...', progress, { uploadSpeed: currentSpeed });
+                }
+            }
+            
+            // Safety break if we are stuck
+            if (performance.now() - startTime > this.config.testDuration + 5000) break;
+        }
+
+        const duration = (performance.now() - (measureStartTime || startTime)) / 1000;
+        if (duration <= 0) return 0;
+        return (totalBytes * 8) / duration / (1024 * 1024);
+
+    } catch (e) {
+        console.error("Upload test failed:", e);
+        return 0;
+    }
   }
 
   private analyzeBandwidth(down: any, lat: any, net: any) {

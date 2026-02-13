@@ -1,19 +1,126 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
+// Validation Schema for Robustness
+const ResultSchema = z.object({
+  linkId: z.string().optional(),
+  testLinkId: z.string().optional(),
+  cpfCnpj: z.string().optional().nullable(),
+  identificador: z.string().optional().nullable(),
+  
+  // Device
+  deviceType: z.string().optional(),
+  plataforma: z.string().optional(),
+  os: z.string().optional(),
+  browser: z.string().optional(),
+  browserVersion: z.string().optional(),
+  versao: z.string().optional(),
+  userAgent: z.string().optional(),
+  ram: z.string().optional(),
+  memoria: z.string().optional(),
+  cpuCores: z.number().optional(),
+  processadores: z.number().optional(),
+  gpu: z.string().optional(),
+  device: z.object({
+    os: z.string().optional(),
+    browser: z.string().optional(),
+    userAgent: z.string().optional(),
+    deviceMemory: z.union([z.number(), z.string()]).optional(),
+    hardwareConcurrency: z.number().optional(),
+    gpu: z.string().optional(),
+  }).optional(),
+
+  // Network
+  ip: z.string().optional(),
+  publicIp: z.string().optional(),
+  ipv6: z.string().optional(),
+  isIpv6: z.union([z.boolean(), z.string()]).optional(),
+  asn: z.string().optional(),
+  provider: z.string().optional(),
+  provedor: z.string().optional(),
+  connectionType: z.string().optional(),
+  localIp: z.string().optional(),
+  network: z.object({
+    ip: z.string().optional(),
+    ipv6: z.string().optional(),
+    connectionType: z.string().optional(),
+  }).optional(),
+
+  // MTU/MSS
+  mtu: z.union([z.number(), z.string()]).optional(),
+  mss: z.union([z.number(), z.string()]).optional(),
+
+  // Speed
+  downloadAvg: z.number().optional(),
+  downloadMax: z.number().optional(),
+  uploadAvg: z.number().optional(),
+  uploadMax: z.number().optional(),
+  ping: z.number().optional(),
+  jitter: z.number().optional(),
+  jitterStatus: z.string().optional(),
+  speed: z.object({
+    download: z.number().optional(),
+    upload: z.number().optional(),
+    ping: z.number().optional(),
+    jitter: z.number().optional(),
+  }).optional(),
+
+  // Streaming
+  sdStatus: z.string().optional(),
+  hdStatus: z.string().optional(),
+  ultraHdStatus: z.string().optional(),
+  status4k: z.string().optional(),
+  liveStatus: z.string().optional(),
+  streaming: z.object({
+    hd: z.boolean().optional(),
+    uhd: z.boolean().optional(),
+  }).optional(),
+
+  // Quality
+  qualitySpeed: z.number().optional(),
+  qualityLatency: z.number().optional(),
+  packetLoss: z.number().optional(),
+  signalStatus: z.string().optional(),
+
+  // Metrics (JSON)
+  pageLoadMetrics: z.any().optional(),
+  externalStatus: z.any().optional(),
+});
+
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting result save process...`);
+
   try {
     const body = await request.json();
     
+    // 1. Validation
+    const parseResult = ResultSchema.safeParse(body);
+    if (!parseResult.success) {
+      console.error(`[${requestId}] Validation failed:`, parseResult.error.format());
+      return NextResponse.json(
+        { error: 'Invalid data format', details: parseResult.error.format() }, 
+        { status: 400 }
+      );
+    }
+    
+    const validBody = parseResult.data;
+
+    // 2. Extract and Normalize Data
     // Extract linkId and remove it from the data object to avoid Prisma unknown argument error
-    const { testLinkId, linkId, ...restBody } = body;
+    const { testLinkId, linkId, ...restBody } = validBody;
     const rawLinkId = linkId || testLinkId;
 
     if (!rawLinkId) {
-        throw new Error('testLinkId is missing');
+        console.warn(`[${requestId}] Missing testLinkId`);
+        return NextResponse.json({ error: 'testLinkId is required' }, { status: 400 });
     }
+
+    // Verify if testLink exists to prevent foreign key errors
+    // (Optional optimization: Prisma will throw if not found, but checking helps precise error msg)
 
     const data = {
         testLink: {
@@ -33,7 +140,6 @@ export async function POST(request: Request) {
         
         // Network
         publicIp: restBody.ip || restBody.publicIp || (restBody.network?.ip),
-        ipv6: restBody.ipv6 || (restBody.network?.ipv6),
         isIpv6: restBody.isIpv6 === "Sim" || restBody.isIpv6 === true,
         provider: restBody.provedor || restBody.provider,
         connectionType: restBody.connectionType || (restBody.network?.connectionType),
@@ -70,13 +176,23 @@ export async function POST(request: Request) {
         externalStatus: restBody.externalStatus
     };
 
+    console.log(`[${requestId}] Saving to database for Link ID: ${rawLinkId}`);
+
     const result = await prisma.testResult.create({
       data
     });
 
+    console.log(`[${requestId}] Successfully saved result ID: ${result.id}`);
+
     return NextResponse.json({ success: true, id: result.id });
-  } catch (e) {
-    console.error('Error saving result:', e);
-    return NextResponse.json({ error: 'Failed to save result' }, { status: 500 });
+  } catch (e: any) {
+    console.error(`[${requestId}] Error saving result:`, e);
+    
+    // Detailed error handling for Prisma
+    if (e.code === 'P2025') {
+        return NextResponse.json({ error: 'Test Link ID not found' }, { status: 404 });
+    }
+    
+    return NextResponse.json({ error: 'Failed to save result', details: e.message }, { status: 500 });
   }
 }
