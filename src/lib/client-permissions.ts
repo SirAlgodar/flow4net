@@ -7,8 +7,37 @@ export interface PermissionResult {
 export class ClientPermissions {
   
   static async requestGeolocation(): Promise<PermissionResult> {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return { granted: false, error: 'Geolocalização indisponível neste ambiente' };
+    }
+
     if (!('geolocation' in navigator)) {
-      return { granted: false, error: 'Geolocation not supported' };
+      return { granted: false, error: 'Geolocalização não suportada pelo navegador' };
+    }
+
+    const hostname = window.location?.hostname || '';
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+    if (!window.isSecureContext && !isLocalhost) {
+      return {
+        granted: false,
+        error: 'Geolocalização bloqueada: o navegador exige HTTPS ou localhost para acessar a localização'
+      };
+    }
+
+    const inIframe = window.self !== window.top;
+
+    if (inIframe && (navigator as any).permissions && (navigator as any).permissions.query) {
+      try {
+        const status = await (navigator as any).permissions.query({ name: 'geolocation' as PermissionName });
+        if (status.state === 'denied') {
+          return {
+            granted: false,
+            error: 'Geolocalização bloqueada pela política de permissões do navegador (iframe ou domínio pai)'
+          };
+        }
+      } catch {
+      }
     }
 
     return new Promise((resolve) => {
@@ -24,12 +53,29 @@ export class ClientPermissions {
           });
         },
         (error) => {
-          let errorMsg = 'Unknown error';
-          switch(error.code) {
-            case error.PERMISSION_DENIED: errorMsg = 'User denied permission'; break;
-            case error.POSITION_UNAVAILABLE: errorMsg = 'Position unavailable'; break;
-            case error.TIMEOUT: errorMsg = 'Timeout'; break;
+          let errorMsg = 'Erro desconhecido ao obter localização';
+          const msg = (error && (error as any).message ? String((error as any).message) : '').toLowerCase();
+
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              if (!window.isSecureContext && !isLocalhost) {
+                errorMsg = 'O navegador bloqueou a geolocalização por estar em HTTP. Use HTTPS ou localhost.';
+              } else if (msg.includes('only secure origins') || msg.includes('https')) {
+                errorMsg = 'O navegador requer HTTPS para liberar a geolocalização neste domínio.';
+              } else if (inIframe) {
+                errorMsg = 'A geolocalização foi bloqueada em modo embutido (iframe). Abra o teste em nova aba.';
+              } else {
+                errorMsg = 'Permissão de localização negada nas configurações do navegador ou do site.';
+              }
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMsg = 'Localização indisponível no dispositivo no momento';
+              break;
+            case error.TIMEOUT:
+              errorMsg = 'Tempo esgotado ao tentar obter a localização';
+              break;
           }
+
           resolve({ granted: false, error: errorMsg });
         },
         { timeout: 10000, maximumAge: 60000 }
