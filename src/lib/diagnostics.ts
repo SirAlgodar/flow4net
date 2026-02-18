@@ -113,6 +113,8 @@ interface TestConfig {
   description: string;
 }
 
+let cachedDeviceInfo: { cores: number; ram: string } | null = null;
+
 export class DiagnosticsEngine {
   private updateCallback: (status: string, progress: number, partialMetrics?: Partial<NetworkMetrics>) => void;
   private timings: Record<string, number> = {};
@@ -308,12 +310,31 @@ export class DiagnosticsEngine {
       }
     } catch (e) {}
 
+    let cores = navigator.hardwareConcurrency || 0;
+    let ram = (navigator as any).deviceMemory ? `${(navigator as any).deviceMemory} GB` : "Desconhecido";
+
+    try {
+      if (typeof window !== 'undefined' && 'localStorage' in window) {
+        if (!cachedDeviceInfo) {
+          const stored = window.localStorage.getItem('flow4_device_info');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (typeof parsed.cores === 'number') cores = parsed.cores;
+            if (typeof parsed.ram === 'string') ram = parsed.ram;
+          } else {
+            window.localStorage.setItem('flow4_device_info', JSON.stringify({ cores, ram }));
+          }
+        }
+        cachedDeviceInfo = { cores, ram };
+      }
+    } catch (e) {}
+
     const info = {
       platform,
       browser,
       version,
-      cores: navigator.hardwareConcurrency || 0,
-      ram: (navigator as any).deviceMemory ? `${(navigator as any).deviceMemory} GB` : "Desconhecido",
+      cores,
+      ram,
       gpu,
       userAgent: ua
     };
@@ -342,12 +363,26 @@ export class DiagnosticsEngine {
       let provider = "Desconhecido";
       try {
         if (dataV4.ip && dataV4.ip !== 'Falha') {
-            // Using ip-api.com (free for non-commercial use, no key needed for basic usage)
-            // Warning: Rate limits apply. In production, use a paid service or backend proxy.
-            const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
-            if (resGeo.ok) {
+            const isHttps = typeof window !== 'undefined' ? window.location.protocol === 'https:' : false;
+            if (isHttps) {
+              // Use HTTPS-capable IP intelligence API (no mixed content)
+              const resGeo = await fetch(`https://ipwho.is/${dataV4.ip}`);
+              if (resGeo.ok) {
+                const geoData = await resGeo.json();
+                provider =
+                  (geoData.connection && (geoData.connection.isp || geoData.connection.org)) ||
+                  geoData.org ||
+                  geoData.isp ||
+                  geoData.as ||
+                  "Desconhecido";
+              }
+            } else {
+              // HTTP context (localhost/kiosk) can use ip-api.com without HTTPS
+              const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
+              if (resGeo.ok) {
                 const geoData = await resGeo.json();
                 provider = geoData.isp || geoData.org || geoData.as || "Desconhecido";
+              }
             }
         }
       } catch (e) {
