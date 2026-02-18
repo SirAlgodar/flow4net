@@ -129,7 +129,18 @@ export function WifiInfo() {
       // Cleanup is tricky with async, but for this component it's fine
     } else {
        if (!networkInfo) {
-           setError('API de Navegador limitada.');
+           const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+           const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+           const inIframe = typeof window !== 'undefined' ? window.self !== window.top : false;
+           const insecure = typeof window !== 'undefined' ? !window.isSecureContext : false;
+           
+           if (insecure && !isLocalhost) {
+              setError('APIs de Navegador bloqueadas: o navegador exige HTTPS para liberar informações de rede. Abra via https ou localhost.');
+           } else if (inIframe) {
+              setError('APIs de Navegador bloqueadas em iframe. Abra o teste em uma nova aba/janela.');
+           } else {
+              setError('APIs de Navegador limitadas neste dispositivo/navegador.');
+           }
        }
     }
     

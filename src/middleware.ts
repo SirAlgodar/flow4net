@@ -5,6 +5,16 @@ import { jwtVerify } from 'jose';
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-this';
 
 export async function middleware(request: NextRequest) {
+  // Redirect HTTP -> HTTPS for non-localhost
+  const proto = request.headers.get('x-forwarded-proto') || (request.nextUrl.protocol.replace(':',''));
+  const host = request.headers.get('host') || request.nextUrl.host;
+  const isLocal = host?.startsWith('localhost') || host?.startsWith('127.0.0.1');
+  if (proto === 'http' && !isLocal) {
+    const httpsUrl = new URL(request.url);
+    httpsUrl.protocol = 'https:';
+    return NextResponse.redirect(httpsUrl, 308);
+  }
+
   const token = request.cookies.get('token')?.value;
   const { pathname } = request.nextUrl;
 
