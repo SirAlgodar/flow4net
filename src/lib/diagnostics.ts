@@ -25,14 +25,25 @@ export interface DiagnosticResult {
     userAgent: string;
   };
   network: {
-    provider: string; // Detected via IP API
+    provider: string;
     ip: string;
-    localIp: string; // WebRTC leak or N/A
-    ipv6: string; // "Não é IPv6" or the IP
+    localIp: string;
+    ipv6: string;
     connectionType: string;
-    effectiveType?: string; // Add effective speed type
-    ssid?: string; // Added backend support
-    rssi?: number; // Added backend support
+    effectiveType?: string;
+    ssid?: string;
+    rssi?: number;
+    frequency?: number;
+    channel?: number;
+    quality?: number;
+    ipMetadata?: {
+      asnOrganization?: string;
+      country?: string;
+      region?: string;
+      city?: string;
+      latitude?: number;
+      longitude?: number;
+    };
   };
   mtu: {
     mtu: number;
@@ -360,45 +371,90 @@ export class DiagnosticsEngine {
 
   private async getNetworkInfo() {
     try {
-      // Fetch public IP (IPv4)
       const resV4 = await fetch('https://api.ipify.org?format=json').catch(() => null);
       const dataV4 = resV4 ? await resV4.json() : { ip: 'Falha' };
       
-      // Try IPv6
       let ipv6 = "Não é IPv6";
       try {
         const resV6 = await fetch('https://api64.ipify.org?format=json', { signal: AbortSignal.timeout(2000) });
         const dataV6 = await resV6.json();
         if (dataV6.ip !== dataV4.ip) {
-            ipv6 = dataV6.ip;
+          ipv6 = dataV6.ip;
         }
       } catch (e) {}
 
-      // Fetch ISP/Provider info using a public IP API
       let provider = "Desconhecido";
+      let ipMetadata:
+        | {
+            asnOrganization?: string;
+            country?: string;
+            region?: string;
+            city?: string;
+            latitude?: number;
+            longitude?: number;
+          }
+        | undefined;
+
       try {
-        if (dataV4.ip && dataV4.ip !== 'Falha') {
-            const isHttps = typeof window !== 'undefined' ? window.location.protocol === 'https:' : false;
-            if (isHttps) {
-              // Use HTTPS-capable IP intelligence API (no mixed content)
-              const resGeo = await fetch(`https://ipwho.is/${dataV4.ip}`);
-              if (resGeo.ok) {
-                const geoData = await resGeo.json();
-                provider =
-                  (geoData.connection && (geoData.connection.isp || geoData.connection.org)) ||
-                  geoData.org ||
-                  geoData.isp ||
-                  geoData.as ||
-                  "Desconhecido";
-              }
-            } else {
-              // HTTP context (localhost/kiosk) can use ip-api.com without HTTPS
-              const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
-              if (resGeo.ok) {
-                const geoData = await resGeo.json();
-                provider = geoData.isp || geoData.org || geoData.as || "Desconhecido";
-              }
+        const metaRes = await fetch('https://free.freeipapi.com/api/json/', {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (metaRes.ok) {
+          const metaJson = await metaRes.json();
+          const asnOrg =
+            typeof metaJson.asnOrganization === 'string'
+              ? metaJson.asnOrganization.trim()
+              : '';
+
+          ipMetadata = {};
+
+          if (asnOrg) {
+            ipMetadata.asnOrganization = asnOrg;
+            provider = asnOrg;
+          }
+
+          if (typeof metaJson.countryName === 'string' && metaJson.countryName.trim()) {
+            ipMetadata.country = metaJson.countryName.trim();
+          }
+          if (typeof metaJson.regionName === 'string' && metaJson.regionName.trim()) {
+            ipMetadata.region = metaJson.regionName.trim();
+          }
+          if (typeof metaJson.cityName === 'string' && metaJson.cityName.trim()) {
+            ipMetadata.city = metaJson.cityName.trim();
+          }
+          if (typeof metaJson.latitude === 'number') {
+            ipMetadata.latitude = metaJson.latitude;
+          }
+          if (typeof metaJson.longitude === 'number') {
+            ipMetadata.longitude = metaJson.longitude;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch IP metadata from freeipapi', e);
+      }
+
+      try {
+        if (provider === "Desconhecido" && dataV4.ip && dataV4.ip !== 'Falha') {
+          const isHttps =
+            typeof window !== 'undefined' ? window.location.protocol === 'https:' : false;
+          if (isHttps) {
+            const resGeo = await fetch(`https://ipwho.is/${dataV4.ip}`);
+            if (resGeo.ok) {
+              const geoData = await resGeo.json();
+              provider =
+                (geoData.connection && (geoData.connection.isp || geoData.connection.org)) ||
+                geoData.org ||
+                geoData.isp ||
+                geoData.as ||
+                "Desconhecido";
             }
+          } else {
+            const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
+            if (resGeo.ok) {
+              const geoData = await resGeo.json();
+              provider = geoData.isp || geoData.org || geoData.as || "Desconhecido";
+            }
+          }
         }
       } catch (e) {
         console.warn("Failed to fetch ISP info:", e);
@@ -416,9 +472,11 @@ export class DiagnosticsEngine {
                       type === 'ethernet' ? 'Cabo' : type;
       }
 
-      // Try to fetch backend WiFi info if available (Local/Kiosk mode)
       let ssid = undefined;
       let rssi = undefined;
+      let frequency = undefined as number | undefined;
+      let channel = undefined as number | undefined;
+      let quality = undefined as number | undefined;
       try {
           const wifiRes = await fetch('/api/network/wifi');
           if (wifiRes.ok) {
@@ -426,6 +484,15 @@ export class DiagnosticsEngine {
               if (wifiData.connected && wifiData.data) {
                   ssid = wifiData.data.ssid;
                   rssi = wifiData.data.signal_level;
+                  if (typeof wifiData.data.frequency === 'number') {
+                    frequency = wifiData.data.frequency;
+                  }
+                  if (typeof wifiData.data.channel === 'number') {
+                    channel = wifiData.data.channel;
+                  }
+                  if (typeof wifiData.data.quality === 'number') {
+                    quality = wifiData.data.quality;
+                  }
                   if (!type || type === 'unknown') {
                       displayType = "WiFi (Local)";
                   }
@@ -438,12 +505,16 @@ export class DiagnosticsEngine {
       return {
         provider,
         ip: dataV4.ip,
-        localIp: "Oculto", // Browsers hide this for security
+        localIp: "Oculto",
         ipv6,
         connectionType: displayType,
         effectiveType: conn.effectiveType || "Desconhecido",
         ssid,
-        rssi
+        rssi,
+        frequency,
+        channel,
+        quality,
+        ipMetadata
       };
     } catch (e) {
       return { provider: "Erro", ip: "Erro", localIp: "Erro", ipv6: "Erro", connectionType: "Erro" };

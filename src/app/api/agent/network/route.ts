@@ -9,7 +9,6 @@ export const runtime = "nodejs";
 export async function GET() {
   const start = Date.now();
   try {
-    // Tenta localizar binário no PATH
     const cmd = process.env.FLOW4_AGENT_BIN || "flow4-net-agent";
 
     const { stdout } = await execFileAsync(cmd, ["-json", "-timeout-ms", "5000"], {
@@ -38,14 +37,18 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error("[agent/network] Failed to execute flow4-net-agent:", error);
+    const isNotFound =
+      error?.code === "ENOENT" ||
+      (typeof error?.message === "string" && error.message.toLowerCase().includes("not found"));
+
     return NextResponse.json(
       {
         ok: false,
-        error: "Agent execution failed",
+        installed: !isNotFound,
+        error: isNotFound ? "Agent binary not found" : "Agent execution failed",
         details: error?.message || String(error),
       },
-      { status: 500 }
+      { status: isNotFound ? 404 : 500 }
     );
   }
 }
-

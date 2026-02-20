@@ -10,6 +10,19 @@ describe('DiagnosticsEngine', () => {
                     json: () => Promise.resolve({ status: 'up', latency: 50 })
                 });
             }
+            if (url.includes('free.freeipapi.com')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        asnOrganization: 'FreeIPAPI ISP',
+                        countryName: 'Brasil',
+                        regionName: 'SP',
+                        cityName: 'São Paulo',
+                        latitude: -23.5,
+                        longitude: -46.6
+                    })
+                });
+            }
             if (url.includes('download')) {
                 return Promise.resolve({
                     body: {
@@ -23,7 +36,7 @@ describe('DiagnosticsEngine', () => {
             if (url.includes('upload')) {
                 return new Promise(resolve => setTimeout(() => resolve({ ok: true }), 10));
             }
-            if (url.includes('ip')) {
+            if (url.includes('api.ipify.org') || url.includes('api64.ipify.org')) {
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ ip: '1.2.3.4' })
@@ -99,7 +112,11 @@ describe('DiagnosticsEngine', () => {
         expect(result.downdetector).toBeDefined();
         expect(result.network.ip).toBe('1.2.3.4');
         expect(result.quality).toBeDefined();
-        // Check for new properties
+        expect(result.network.provider).toBe('FreeIPAPI ISP');
+        expect(result.network.ipMetadata?.asnOrganization).toBe('FreeIPAPI ISP');
+        expect(result.network.ipMetadata?.country).toBe('Brasil');
+        expect(result.network.ssid).toBe('TestWiFi');
+        expect(result.network.rssi).toBe(-50);
         expect(result.quality?.color).toBeDefined();
     });
 
