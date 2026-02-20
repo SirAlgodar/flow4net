@@ -89,6 +89,7 @@ export interface DiagnosticResult {
     mic: boolean;
     details?: any[];
   };
+  agent?: any;
 }
 
 export interface PageMetric {
@@ -216,7 +217,20 @@ export class DiagnosticsEngine {
     this.updateCallback('Verificando status de serviços...', 85);
     const downdetectorData = await this.checkDowndetector();
 
-    // --- 8. Final Compilation ---
+    // --- 8. Agent (flow4-net-agent) ---
+    let agentData: any = null;
+    try {
+      this.updateCallback('Coletando dados avançados de rede (agente)...', 92);
+      const agentRes = await fetch('/api/agent/network', { cache: 'no-store' });
+      if (agentRes.ok) {
+        const agentJson = await agentRes.json();
+        agentData = agentJson.agent || null;
+      }
+    } catch (e) {
+      console.warn('Failed to collect agent data', e);
+    }
+
+    // --- 9. Final Compilation ---
     this.updateCallback('Compilando resultados...', 95);
     this.startTimer('datasend');
     
@@ -274,7 +288,8 @@ export class DiagnosticsEngine {
       downdetector: downdetectorData,
       quality,
       location: context.location,
-      mediaCheck: context.mediaCheck
+      mediaCheck: context.mediaCheck,
+      agent: agentData
     };
   }
 

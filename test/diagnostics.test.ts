@@ -44,6 +44,12 @@ describe('DiagnosticsEngine', () => {
                     json: () => Promise.resolve({ connected: true, data: { ssid: 'TestWiFi', signal_level: -50 } })
                 });
             }
+            if (url.includes('/api/agent/network')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ ok: true, agent: { platform: 'windows', wifi: { ssid: 'AgentWiFi' } } })
+                });
+            }
             return Promise.reject(new Error(`Unknown URL: ${url}`));
         };
 
