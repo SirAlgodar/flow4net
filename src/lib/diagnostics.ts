@@ -26,6 +26,7 @@ export interface DiagnosticResult {
   };
   network: {
     provider: string;
+    providerReason?: string;
     ip: string;
     localIp: string;
     ipv6: string;
@@ -383,7 +384,8 @@ export class DiagnosticsEngine {
         }
       } catch (e) {}
 
-      let provider = "Desconhecido";
+      let provider = "Não identificado";
+      let providerReason: string | undefined;
       let ipMetadata:
         | {
             asnOrganization?: string;
@@ -411,6 +413,8 @@ export class DiagnosticsEngine {
           if (asnOrg) {
             ipMetadata.asnOrganization = asnOrg;
             provider = asnOrg;
+          } else {
+            providerReason = "Serviço de identificação de IP não retornou organização ASN.";
           }
 
           if (typeof metaJson.countryName === 'string' && metaJson.countryName.trim()) {
@@ -428,13 +432,18 @@ export class DiagnosticsEngine {
           if (typeof metaJson.longitude === 'number') {
             ipMetadata.longitude = metaJson.longitude;
           }
+        } else {
+          providerReason = "Serviço de identificação de IP indisponível no momento.";
         }
       } catch (e) {
         console.warn('Failed to fetch IP metadata from freeipapi', e);
+        if (!providerReason) {
+          providerReason = "Falha ao consultar serviço de identificação de IP.";
+        }
       }
 
       try {
-        if (provider === "Desconhecido" && dataV4.ip && dataV4.ip !== 'Falha') {
+        if (provider === "Não identificado" && dataV4.ip && dataV4.ip !== 'Falha') {
           const isHttps =
             typeof window !== 'undefined' ? window.location.protocol === 'https:' : false;
           if (isHttps) {
@@ -446,18 +455,21 @@ export class DiagnosticsEngine {
                 geoData.org ||
                 geoData.isp ||
                 geoData.as ||
-                "Desconhecido";
+                provider;
             }
           } else {
             const resGeo = await fetch(`http://ip-api.com/json/${dataV4.ip}?fields=isp,org,as`);
             if (resGeo.ok) {
               const geoData = await resGeo.json();
-              provider = geoData.isp || geoData.org || geoData.as || "Desconhecido";
+              provider = geoData.isp || geoData.org || geoData.as || provider;
             }
           }
         }
       } catch (e) {
         console.warn("Failed to fetch ISP info:", e);
+        if (!providerReason) {
+          providerReason = "Não foi possível identificar o provedor devido a restrições de rede/navegador ou uso de VPN/CGNAT.";
+        }
       }
 
       // Connection API
@@ -504,6 +516,7 @@ export class DiagnosticsEngine {
 
       return {
         provider,
+        providerReason,
         ip: dataV4.ip,
         localIp: "Oculto",
         ipv6,

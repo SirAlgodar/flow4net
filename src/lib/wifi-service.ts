@@ -23,28 +23,39 @@ export interface WifiNetworkData {
 }
 
 export class WifiService {
+    private static nodeWifiDisabled = false;
+    private static linuxNmcliDisabled = false;
+
     static async getCurrentConnections(): Promise<WifiNetworkData[]> {
-        // 1. Try node-wifi first
-        try {
-            console.log('[WifiService] Attempting to get current connections via node-wifi...');
-            const connections = await wifi.getCurrentConnections();
-            if (connections.length > 0) {
-                console.log('[WifiService] node-wifi success:', connections);
-                return connections.map(c => ({
-                    ssid: c.ssid,
-                    bssid: c.bssid || '',
-                    mac: c.mac || '',
-                    channel: c.channel,
-                    frequency: c.frequency || 0,
-                    signal_level: c.signal_level || 0,
-                    quality: c.quality || 0,
-                    security: c.security || '',
-                    security_flags: Array.isArray(c.security_flags) ? c.security_flags.join(', ') : '',
-                    mode: c.mode || ''
-                }));
+        if (!WifiService.nodeWifiDisabled) {
+            try {
+                console.log('[WifiService] Attempting to get current connections via node-wifi...');
+                const connections = await wifi.getCurrentConnections();
+                if (connections.length > 0) {
+                    console.log('[WifiService] node-wifi success:', connections);
+                    return connections.map(c => ({
+                        ssid: c.ssid,
+                        bssid: c.bssid || '',
+                        mac: c.mac || '',
+                        channel: c.channel,
+                        frequency: c.frequency || 0,
+                        signal_level: c.signal_level || 0,
+                        quality: c.quality || 0,
+                        security: c.security || '',
+                        security_flags: Array.isArray(c.security_flags) ? c.security_flags.join(', ') : '',
+                        mode: c.mode || ''
+                    }));
+                }
+            } catch (error: any) {
+                const msg = String(error?.message || '');
+                const code = (error && (error as any).code) || '';
+                if (msg.includes('nmcli') || code === 'ENOENT') {
+                    WifiService.nodeWifiDisabled = true;
+                    console.warn('[WifiService] node-wifi disabled: nmcli not found on this host. Skipping further node-wifi attempts.');
+                } else {
+                    console.warn('[WifiService] node-wifi failed:', error);
+                }
             }
-        } catch (error) {
-            console.warn('[WifiService] node-wifi failed:', error);
         }
 
         // 2. macOS Fallback (system_profiler)
@@ -184,25 +195,17 @@ export class WifiService {
         }
 
         // 4. Linux Fallback (nmcli)
-        if (process.platform === 'linux') {
+        if (process.platform === 'linux' && !WifiService.linuxNmcliDisabled) {
             try {
                 console.log('[WifiService] Trying Linux nmcli fallback...');
-                // Get active connection: ACTIVE,SSID,SIGNAL,BARS
                 const { stdout } = await execPromise('nmcli -t -f ACTIVE,SSID,SIGNAL dev wifi');
                 const lines = stdout.split('\n');
                 
                 for (const line of lines) {
-                    // Format: yes:SSID:Signal
-                    // Note: nmcli signal is usually 0-100 quality, sometimes bars
-                    // If it's bars, we can't use it easily. Assuming scale 0-100.
-                    // Actually nmcli signal is usually "strength" (0-100).
-                    const parts = line.split(':'); // delimiter is : for -t
-                    // handle SSID with colons? nmcli escapes them? -t mode escapes : with \:
-                    // A simpler way might be fixed width or specific fields.
-                    // Let's assume standard output for now.
+                    const parts = line.split(':');
                     if (parts[0] === 'yes') {
                         const ssid = parts[1];
-                        const signalStrength = parseInt(parts[2]); // 0-100
+                        const signalStrength = parseInt(parts[2]);
                         const signalDbm = (signalStrength / 2) - 100;
 
                         console.log('[WifiService] Linux fallback success:', ssid, signalDbm);
@@ -220,8 +223,15 @@ export class WifiService {
                         }];
                     }
                 }
-            } catch (e) {
-                console.warn('Linux nmcli fallback failed', e);
+            } catch (e: any) {
+                const msg = String(e?.message || '');
+                const code = (e && (e as any).code) || '';
+                if (msg.includes('nmcli: not found') || code === 127) {
+                    WifiService.linuxNmcliDisabled = true;
+                    console.warn('[WifiService] Linux nmcli not installed. Disabling nmcli fallback on this host.');
+                } else {
+                    console.warn('Linux nmcli fallback failed', e);
+                }
             }
         }
 

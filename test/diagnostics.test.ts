@@ -108,7 +108,6 @@ describe('DiagnosticsEngine', () => {
             console.log('Note: Speeds are 0 because of mock streams, but execution finished.');
         }
         
-        // Validation
         expect(result.downdetector).toBeDefined();
         expect(result.network.ip).toBe('1.2.3.4');
         expect(result.quality).toBeDefined();
@@ -117,6 +116,8 @@ describe('DiagnosticsEngine', () => {
         expect(result.network.ipMetadata?.country).toBe('Brasil');
         expect(result.network.ssid).toBe('TestWiFi');
         expect(result.network.rssi).toBe(-50);
+        expect(result.device.cores).toBe(4);
+        expect(result.device.ram).toBe('8 GB');
         expect(result.quality?.color).toBeDefined();
     });
 
@@ -136,8 +137,8 @@ describe('DiagnosticsEngine', () => {
         const engine = new DiagnosticsEngine((status, progress) => {});
         const result = await engine.run();
         
-        // Check if device info is populated correctly
-        // Note: DiagnosticsEngine.getDeviceInfo() uses platform-utils detectPlatform(userAgent)
         expect(result.device.userAgent).toContain('iPhone');
+        expect(result.device.cores).toBe(2);
+        expect(result.device.ram).toBe('4 GB');
     });
 });
